@@ -1,0 +1,7 @@
+# 订阅 > {{配置名称}} > 扩展覆写配置
+proxy-providers:
+  Subscription:
+    type: http
+    url: ""     # 再此输入你的订阅地址
+    interval: 3600
+    path: "./RemoteResources/Subscribe/Subscription.yaml"

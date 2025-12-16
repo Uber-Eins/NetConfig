@@ -1,0 +1,57 @@
+# 设置 > DNS覆写
+# 如果使用自建反劫持DNS，则直接设置`nameserver`字段为自建反劫持DNS的地址。
+dns:
+  enable: true
+  listen: '0.0.0.0:1053'
+  enhanced-mode: 'fake-ip'
+  fake-ip-range: '198.18.0.1/16'
+  fake-ip-filter-mode: 'blacklist'
+  prefer-h3: false
+  respect-rules: true
+  use-hosts: true
+  use-system-hosts: false
+  ipv6: true
+  direct-nameserver-follow-policy: false
+  fake-ip-filter:
+    - '*.*.xboxlive.com'
+    - '*.arpa'
+    - '*.local'
+    - '*.msftconnecttest.com'
+    - '*.msftncsi.com'
+    - '*.n.n.srv.nintendo.net'
+    - '+.live.com'
+    - '+.market.xiaomi.com'
+    - '+.stun.*.*.*.*.*'
+    - '+.stun.*.*.*.*'
+    - '+.stun.*.*.*'
+    - '+.stun.*.*'
+    - '+.stun.playstation.net'
+    - 'localhost.ptlogin2.qq.com'
+    - 'ntp.*.*'
+    - 'time.*.com'
+    - 'xbox.*.*.microsoft.com'
+    - 'WORKGROUP'
+  default-nameserver:
+    - 'tls://223.5.5.5'
+    - 'tls://223.6.6.6'
+    - 'tls://1.12.12.12'
+    - 'tls://120.53.53.53'
+    - 'system'
+  nameserver:
+    - 'tls://223.5.5.5'
+    - 'tls://223.6.6.6'
+    - 'tls://1.12.12.12'
+    - 'tls://120.53.53.53'
+  proxy-server-nameserver:
+    - 'tls://223.5.5.5'
+    - 'tls://223.6.6.6'
+    - 'tls://1.12.12.12'
+    - 'tls://120.53.53.53'
+  nameserver-policy:
+    '*.arpa':
+      - 'system'
+    GEOSITE:GFW:
+      - 'https://cloudflare-dns.com/dns-query'
+      - 'https://dns.google/dns-query'
+hosts:
+  '*.containers.internal': '127.0.0.1'

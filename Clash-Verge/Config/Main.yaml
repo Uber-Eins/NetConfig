@@ -1,0 +1,529 @@
+# 完整版配置文件说明:https://github.com/MetaCubeX/Clash.Meta/blob/Meta/docs/config.yaml
+
+### 局域网连接设置
+allow-lan: true       # 允许局域网连接
+# 禁止连接的IP地址段,黑名单优先级高于白名单,默认值为空
+# lan-disallowed-ips:
+
+### 用户验证
+# http(s)/socks/mixed代理的用户验证
+authentication:
+  - "user:passwd"
+skip-auth-prefixes: ['127.0.0.1/8', '::1/128']
+ipv6: true
+keep-alive-interval: 30
+find-process-mode: strict
+unified-delay: true
+tcp-concurrent: true
+global-client-fingerprint: "random"
+profile:
+  store-selected: true    # 储存 API 对策略组的选择，以供下次启动时使用
+  store-fake-ip: true     # 储存 fakeip 映射表，域名再次发生连接时，使用原有映射地址
+geodata-mode: true
+geodata-loader: standard
+geo-auto-update: true
+geo-update-interval: 24
+geox-url:
+  geoip: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
+  geosite: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
+  mmdb: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
+
+### Tun设置
+tun:
+  enable: true
+  stack: mixed
+  auto-route: true
+  # auto-redirect: true           # 仅Linux内核5.6+支持
+  auto-detect-interface: true
+  dns-hijack:
+    - any:53
+    - tcp://any:53
+  device: utun0
+  mtu: 9000
+  # strict-route: true          # 将所有连接路由到tun来防止泄漏,但你的设备将无法其他设备被访问
+  gso: true
+  gso-max-size: 65535
+  udp-timeout: 300
+  route-exclude-address:
+    - 10.0.0.0/8
+    - 100.64.0.0/10
+    - 127.0.0.1/32
+    - 172.16.0.0/12
+    - 192.0.2.0/24
+    - 192.168.0.0/16
+    - 203.0.113.0/24
+
+# ### DNS配置
+# dns:
+#   enable: true
+#   cache-algorithm: arc
+#   ipv6: true
+#   prefer-h3: false               # 开启 DoH 支持 HTTP/3,将并发尝试
+#   respect-rules: true
+#   ipv6-timeout: 150             # 单位:ms,内部双栈并发时,向上游查询 AAAA 时,等待 AAAA 的时间，默认 100ms
+#   listen: 0.0.0.0:1053          # 开启 DNS 服务器监听
+#   enhanced-mode: fake-ip
+#   fake-ip-range: 198.18.0.1/16
+#   use-hosts: true # 查询 hosts
+#   fake-ip-filter-mode: blacklist
+#   #! 配置不使用fake-ip的域名
+#   fake-ip-filter:
+#     - "*.*.xboxlive.com"
+#     - "*.arpa"
+#     - "*.local"
+#     - "*.msftconnecttest.com"
+#     - "*.msftncsi.com"
+#     - "*.n.n.srv.nintendo.net"
+#     - "+.live.com"
+#     - "+.market.xiaomi.com"
+#     - "+.stun.*.*.*.*.*"
+#     - "+.stun.*.*.*.*"
+#     - "+.stun.*.*.*"
+#     - "+.stun.*.*"
+#     - "+.stun.playstation.net"
+#     - "localhost.ptlogin2.qq.com"
+#     - "ntp.*.*"
+#     - "time.*.com"
+#     - "xbox.*.*.microsoft.com"
+#     - WORKGROUP
+#   nameserver-policy:
+#     #'*.local':
+#       #- 'system'
+#     '*.arpa':
+#       - 'system'
+#     'GEOSITE:CN':
+#       - tls://223.5.5.5                   # 中国大陆::阿里
+#       - tls://223.6.6.6                   # 中国大陆::阿里
+#       - tls://1.12.12.12                  # 中国大陆::腾讯
+#       - tls://120.53.53.53                # 中国大陆::腾讯
+#     'GEOSITE:GFW':
+#       - "https://cloudflare-dns.com/dns-query"       # 环大陆::Cloudflare
+#       - "https://dns.google/dns-query"               # 环大陆::Google
+#   #! 用于解析nameserver,fallback以及其他DNS服务器配置的DNS服务域名
+#   default-nameserver:
+#     #! DNS
+#     #- 223.5.5.5                        # 中国大陆::阿里
+#     #- 119.29.29.29                     # 中国大陆::腾讯
+#     #- 1.1.1.1                          # 环大陆::Cloudflare
+#     #- 8.8.8.8                          # 环大陆::Google
+#     #- 9.9.9.9                          # 环大陆::Quad9
+#     #! DNS-over-TLS
+#     #! 通过传输层安全协议(TLS)来加密并打包域名系统(DNS)的安全协议。此协议旨在防止中间人攻击与控制DNS数据以保护用户隐私。
+#     - tls://223.5.5.5                   # 中国大陆::阿里
+#     - tls://223.6.6.6                   # 中国大陆::阿里
+#     - tls://1.12.12.12                  # 中国大陆::腾讯
+#     - tls://120.53.53.53                # 中国大陆::腾讯
+#     - system                            # 特殊::使用系统默认 (在一些版本的核心上可能会报错)
+
+#   #! DNS主要域名配置 [UDP|TCP|DoT|DoH|DoQ]
+#   #! 这部分为主要 DNS 配置，影响所有直连，确保使用对大陆解析精准的 DNS
+#   nameserver:
+#     #! DNS-over-TLS
+#     #! 通过传输层安全协议(TLS)来加密并打包域名系统(DNS)的安全协议。此协议旨在防止中间人攻击与控制DNS数据以保护用户隐私。
+#     - tls://223.5.5.5                  # 中国大陆::阿里
+#     - tls://223.6.6.6                  # 中国大陆::阿里
+#     - tls://1.12.12.12                 # 中国大陆::腾讯
+#     - tls://120.53.53.53               # 中国大陆::腾讯
+
+#     #! DNS-over-HTTP
+#     #- "https://dns.alidns.com/dns-query"
+#     #- "https://doh.pub/dns-query"
+#     #- "https://ddns.zako.store:0721/dns-query/ciallo"
+
+#     #- system
+#   fallback:
+#     - "https://cloudflare-dns.com/dns-query"       # 环大陆::Cloudflare
+#     - "https://dns.google/dns-query"               # 环大陆::Google
+#     #- system
+#   #! 专用于节点域名解析的 DNS 服务器，非必要配置项
+#   #! 配置服务器若查询失败将使用 nameserver
+#   proxy-server-nameserver:
+#     - tls://223.5.5.5                  # 中国大陆::阿里
+#     - tls://223.6.6.6                  # 中国大陆::阿里
+#     - tls://1.12.12.12                 # 中国大陆::腾讯
+#     - tls://120.53.53.53               # 中国大陆::腾讯
+#   fallback-filter:
+#     geoip: true
+#     geoip-code: CN
+#     #geosite:
+#       #- gfw
+#     ipcidr:
+#       - 240.0.0.0/4
+#       - 0.0.0.0/32
+#       - 127.0.0.1/32
+    #domain:
+      #- '+.google.com'
+      #- '+.facebook.com'
+      #- '+.youtube.com'
+
+### hosts设置
+# hosts:
+#    surge.local: [192.168.255.101, 172.20.10.1]
+#    rocky-0.local: 192.0.2.101
+#    rocky-1.local: 192.0.2.102
+#    rocky-2.local: 192.0.2.103
+#    '*.localhost': 127.0.0.1
+
+#   '*.arch.matrix.vlan': localhost
+
+### 域名嗅探
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  override-destination: true
+  sniff:
+    HTTP:
+      ports: [80, 8080-8880]
+      #override-destination: true
+    TLS:
+      ports: [443, 8443]
+    QUIC:
+      ports: [443, 8443]
+
+use: &All-Subscriptions
+  use:
+    - Subscription
+
+# 订阅
+proxy-providers:
+  Subscription:
+    type: http
+    url: ""
+    interval: 3600
+    path: "./RemoteResources/Subscribe/Subscription.yaml"
+
+proxies:
+
+proxy-groups:
+  - name: "Available"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
+    proxies:
+      - SMART
+      - Manual
+      - HK
+      - TW
+      - SG
+      - JP
+      - US
+
+  - name: "Manual"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Available.png
+    include-all: true
+
+  - name: "B|W"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Bypass.png
+    proxies:
+      - Available
+      - GAN
+
+  - name: "WARP"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Cloudflare.png
+    include-all: true
+    filter: WARP
+
+  # 国际媒体
+  - name: "Youtube"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/YouTube.png
+    proxies:
+      - Available
+      - HK
+      - TW
+      - SG
+      - JP
+      - US
+
+  - name: "Microsoft"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Microsoft.png
+    proxies:
+      - Available
+      - HK
+      - TW
+      - SG
+      - JP
+      - US
+  - name: "Google"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Google_Search.png
+    proxies:
+      - US
+      - Available
+      - HK
+      - TW
+      - SG
+      - JP
+  - name: "Games"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Game.png
+    proxies:
+      - TW
+      - SG
+      - JP
+    <<: *All-Subscriptions
+    filter: "(?=.*(俄罗斯|阿根廷|土耳其|游戏|专线))^((?!(试用|剩余|重置|到期|更新|海外|新西兰|尼日利亚|请勿使用)).)*$"
+  # 港台番剧
+  - name: "Bilibili"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/bilibili.png
+    proxies:
+      - GAN
+      - Available
+      - HK
+      - TW
+
+  - name: "Download"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Download.png
+    proxies:
+      - GAN
+      - Available
+      - Manual
+
+  - name: "GAN"
+    type: select
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/China.png
+    proxies:
+      - DIRECT
+      - Available
+
+  ##### 自动测速节点 #####
+  - name: "SMART"
+    type: load-balance
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Available_1.png
+    strategy: consistent-hashing
+    proxies:
+      - HK
+      - TW
+      - JP
+      - SG
+    #url: "https://www.apple.com/library/test/success.html"
+    interval: 300
+    tolerance: 50
+    hidden: true
+
+  - name: "DNS"
+    type: url-test
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Area.png
+    <<: *All-Subscriptions
+    filter: "(?=.*(港|台|新|日|韩))^((?!(试用|剩余|重置|到期|更新|海外|新西兰|尼日利亚|请勿使用)).)*$"
+    url: "https://www.apple.com/library/test/success.html"
+    interval: 300
+    tolerance: 50
+    hidden: true
+
+  - name: "HK"
+    type: url-test
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Hong_Kong.png
+    <<: *All-Subscriptions
+    filter: "(?=.*(港|HK|(?i)Hong))^((?!(台|日|韩|新|美|游戏|请勿使用)).)*$"
+    interval: 300
+    tolerance: 50
+    lazy: false
+    hidden: true
+
+  - name: "TW"
+    type: url-test
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Taiwan.png
+    <<: *All-Subscriptions
+    filter: "(?=.*(台|TW|(?i)Taiwan))^((?!(日|韩|新|美|海外)).)*$"
+    interval: 300
+    tolerance: 50
+    lazy: false
+    hidden: true
+
+  - name: "SG"
+    type: url-test
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Singapore.png
+    <<: *All-Subscriptions
+    filter: "(?=.*(新|狮|獅|SG|(?i)Singapore))^((?!(台|日|韩|美|新西兰|更新)).)*$"
+    interval: 300
+    tolerance: 50
+    lazy: false
+    hidden: true
+
+  - name: "JP"
+    type: url-test
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Japan.png
+    <<: *All-Subscriptions
+    filter: "(?=.*(日|JP|(?i)Japan))^((?!(台|韩|新|美|游戏|尼日利亚)).)*$"
+    interval: 300
+    tolerance: 50
+    lazy: false
+    hidden: true
+
+  - name: "US"
+    type: url-test
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/United_States.png
+    <<: *All-Subscriptions
+    filter: "(?=.*(美|US|(?i)States|American))^((?!(台|日|韩|新|亚美尼亚)).)*$"
+    interval: 300
+    tolerance: 50
+    lazy: false
+    hidden: true
+
+rule-providers:
+  # Reject
+  AdvertisingLite:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdvertisingLite/AdvertisingLite.yaml"
+    path: "./RemoteResources/Rule/AdvertisingLite.yaml"
+    interval: 86400
+  AdvertisingLite_Domain:
+    type: http
+    behavior: domain
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdvertisingLite/AdvertisingLite_Domain.yaml"
+    path: "./RemoteResources/Rule/AdvertisingLite_Domain.yaml"
+    interval: 86400
+  Anti-AD:
+    type: http
+    behavior: domain
+    url: "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-clash.yaml"
+    path: "./RemoteResources/Rule/Anti-AD.yaml"
+    interval: 86400
+  REJECT:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/Uber-Eins/Emir-Cluste/main/Clash.Meta/Rule/REJECT.yaml"
+    path: "./RemoteResources/Rule/REJECT.yaml"
+    interval: 86400
+
+  # 国际媒体
+  YouTube:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouTube/YouTube.yaml"
+    path: "./RemoteResources/Rule/YouTube.yaml"
+    interval: 86400
+  Bahamut:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Bahamut/Bahamut.yaml"
+    path: "./RemoteResources/Rule/Bahamut.yaml"
+    interval: 86400
+  Bilibili:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BiliBili/BiliBili.yaml"
+    path: "./RemoteResources/Rule/Bilibili.yaml"
+    interval: 86400
+
+  # 巨硬服务
+  Bing:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Bing/Bing.yaml"
+    path: "./RemoteResources/Rule/Bing.yaml"
+    interval: 86400
+  # 谷歌服务
+  Google:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Google/Google.yaml"
+    path: "./RemoteResources/Rule/Google.yaml"
+    interval: 86400
+
+  # 全球加速
+  Global:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Global/Global.yaml"
+    path: "./RemoteResources/Rule/Global.yaml"
+    interval: 86400
+  Global_Domain:
+    type: http
+    behavior: domain
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Global/Global_Domain.yaml"
+    path: "./RemoteResources/Rule/Global_Domain.yaml"
+    interval: 86400
+
+  # 中国大陆
+  # ChinaMax:
+  #   type: http
+  #   behavior: classical
+  #   url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax.yaml"
+  #   path: "./RemoteResources/Rule/ChinaMax.yaml"
+  #   interval: 86400
+  # ChinaMax_IP:
+  #   type: http
+  #   behavior: ipcidr
+  #   url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_IP.yaml"
+  #   path: "./RemoteResources/Rule/ChinaMax_IP.yaml"
+  #   interval: 86400
+
+  Download:
+    type: http
+    behavior: classical
+    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Download/Download.yaml"
+    path: "./RemoteResources/Rule/Download.yaml"
+    interval: 86400
+
+rules:
+  ### ======= DNS ======= ###
+  - DOMAIN,doh.pub,DIRECT
+  - DOMAIN,dns.alidns.com,DIRECT
+  - IP-CIDR,223.5.5.5/32,DIRECT,no-resolve
+  - IP-CIDR,223.6.6.6/32,DIRECT,no-resolve
+  - IP-CIDR,1.12.12.12/32,DIRECT,no-resolve
+  - IP-CIDR,120.53.53.53/32,DIRECT,no-resolve
+
+  - DOMAIN,cloudflare-dns.com,DNS
+  - DOMAIN,dns.google,DNS
+
+  ### ======= 微软网络连接测试 ======= ###
+  - DOMAIN,dns.msftncsi.com,GAN
+  - DOMAIN,www.msftncsi.com,GAN
+  - DOMAIN,www.msftconnecttest.com,GAN
+  - DOMAIN,ipv6.msftconnecttest.com,GAN
+
+  ### ======= Steam ======= ###
+  - DOMAIN-SUFFIX,cm.steampowered.com,GAN
+  - DOMAIN-SUFFIX,steamserver.net,GAN
+  - DOMAIN-KEYWORD,steamcloud,Available
+
+  ### ======= HSR ======= ###
+  - AND,((DOMAIN-SUFFIX,hoyoverse.com),(DOMAIN-KEYWORD,log)),REJECT
+  - AND,((DOMAIN-SUFFIX,starrails.com),(DOMAIN-KEYWORD,prod)),Games
+  - AND,((NETWORK,UDP),(DST-PORT,23301)),Games
+  - DOMAIN-SUFFIX,hoyoverse.com,Games
+
+  ### ======= REJECT ======= ###
+  - GEOSITE,Category-Ads-All,REJECT
+  - GEOSITE,Win-Spy,REJECT
+  #- GEOSITE,Win-Extra,REJECT
+  - RULE-SET,AdvertisingLite,REJECT
+  - RULE-SET,AdvertisingLite_Domain,REJECT
+  - RULE-SET,Anti-AD,REJECT
+  - RULE-SET,REJECT,REJECT
+
+  ### ======= PROXY ======= ###
+  - RULE-SET,YouTube,Youtube
+  - RULE-SET,Bahamut,TW
+  - RULE-SET,Bilibili,Bilibili
+  - RULE-SET,Bing,Microsoft
+  - RULE-SET,Google,Google
+  - GEOSITE,GFW,Available
+  #- RULE-SET,Global,Available
+  #- RULE-SET,Global_Domain,Available
+
+
+  ### ======= DIRECT ======= ###
+  - GEOSITE,Tracker,GAN
+  - GEOSITE,Apple-CN,GAN
+  - GEOSITE,Microsoft@CN,GAN
+  - GEOSITE,Steam@CN,GAN
+  - GEOSITE,CN,GAN
+  # - RULE-SET,ChinaMax,GAN
+  # - RULE-SET,ChinaMax_IP,GAN
+  - GEOIP,PRIVATE,DIRECT,no-resolve
+  - GEOIP,CN,GAN
+
+  ### ======= 其他 ======= ###
+  - RULE-SET,Download,Download
+  - MATCH,B|W
