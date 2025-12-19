@@ -23,7 +23,7 @@ jobs:
       - name: Run ruletool
         run: |
           chmod +x ./Tool/ruletool
-          ./Tool/ruletool config.toml
+          ./Tool/ruletool ./Tool/config.toml
 
       # 提交更新的规则文件
       - name: Commit and push changes
