@@ -1,0 +1,26 @@
+# Clash 规则去重工具配置文件
+
+# 临时文件存放路径（下载的规则文件会按分类存放在此目录下）
+temp_dir = "/tmp/rules"
+
+# 输出目录（可选，去重后的 .list 文件会移动到此目录）
+# 如果不设置，.list 文件会保留在 temp_dir 中
+output_dir = "./Rules"
+
+# 并发下载数（可选，默认为 10）
+concurrent_downloads = 16
+
+# 分类定义
+# 格式: [categories.分类名]
+#       urls = ["url1", "url2", ...]
+
+[categories.Block]
+urls = [
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Surge/Advertising/Advertising_All.list",
+    "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-surge.txt",
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Hijacking/Hijacking.list",
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Privacy/Privacy.list",
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Surge/EasyPrivacy/EasyPrivacy_All.list",
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/BlockHttpDNS/BlockHttpDNS.list",
+]
+

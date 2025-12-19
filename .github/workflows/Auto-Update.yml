@@ -1,0 +1,41 @@
+# 规则自动更新工作流
+
+name: Auto Update Rules
+
+on:
+  # 每天 UTC 00:00 自动运行
+  schedule:
+    - cron: '0 0 * * *'
+  
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  update-rules:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 添加执行权限并运行程序
+      - name: Run ruletool
+        run: |
+          chmod +x ./Tool/ruletool
+          ./Tool/ruletool config.toml
+
+      # 提交更新的规则文件
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          # 检查是否有变更
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: auto update rules $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            git push
+          fi
+
