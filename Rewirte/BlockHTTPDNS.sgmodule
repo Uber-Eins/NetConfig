@@ -1,0 +1,35 @@
+#!name=BlockHTTPDNS
+#!desc=阻断HTTPDNS
+#!author=Uber-Eins
+#!repo=https://github.com/Uber-Eins/NetConfig
+#!category=Block
+
+[General]
+force-http-engine-hosts = %APPEND% 119.29.29.29:80,dns.weixin.qq.com:443,dns.weixin.qq.com:80,dns.weixin.qq.com:8080
+
+[URL Rewrite]
+"^http:\/\/101\.35\.204\.35\/d" - reject
+"^http:\/\/103\.37\.155\.60\/fetch" - reject
+"^http:\/\/114\.110\.96\.26\/d" - reject
+"^http:\/\/116\.63\.10\.135\/resolve" - reject
+"^http:\/\/117\.185\.228\.108\/resolve" - reject
+"^http:\/\/180\.76\.76\.112\/v4\/resolve" - reject
+"^http:\/\/182\.256\.116\.116\/d" - reject
+"^http:\/\/[2402:4e00:1411:201:0:9964:ba21:5a41]\/d" - reject
+"^http:\/\/[240c:409f::3:0:163]\/d" - reject
+"^http:\/\/api\.weibo\.cn\/2\/httpdns\/config" - reject
+"^https:\/\/dns\.jd\.com\/v6\/b" - reject
+"^https?:\/\/.+\.zijieapi\.com\/get_domains\/" - reject
+"^https?:\/\/110\.76\.8\.150\/squery" - reject
+"^https?:\/\/119\.29\.29\.29\/d" - reject
+"^https?:\/\/203\.209\.230\.39\/squery" - reject
+"^https?:\/\/2400:B180:6001::18F\/squery" - reject
+"^https?:\/\/2400:B200:1005:3000::155\/squery" - reject
+"^https?:\/\/amdc-sibling\.alipay\.com\.cn\/s?query" - reject
+"^https?:\/\/amdc\.alipay\.com\/s?query" - reject
+"^https?:\/\/dns\.weixin\.qq\.com\/cgi-bin\/micromsg-bin\/newgetdns" - reject
+"^https?:\/\/short\.weixin\.qq\.com\/cgi-bin\/micromsg-bin\/getcdndns" - reject
+
+
+[MITM]
+hostname = %APPEND% *.httpdns.pro,101.35.204.35,103.37.155.60,110.76.8.150,114.110.96.26,119.29.29.29,119.29.29.98,119.29.29.99,180.76.76.112,182.256.116.116,amdc-sibling.alipay.com.cn,amdc.alipay.com,api.weibo.cn,dns.jd.com,dns.weixin.qq.com,short.weixin.qq.com,zijieapi.com
