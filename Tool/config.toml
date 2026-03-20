@@ -12,9 +12,11 @@ concurrent_downloads = 16
 
 # 分类定义
 # 格式: [categories.分类名]
+#       type = "Rulesets" # 可选: Rulesets / ABP / ADG，默认 Rulesets
 #       urls = ["url1", "url2", ...]
 
 [categories.Block]
+type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Surge/Advertising/Advertising_All.list",
     "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-surge.txt",

@@ -1,10 +1,28 @@
 use ipnet::{Ipv4Net, Ipv6Net};
 use rayon::prelude::*;
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use walkdir::WalkDir;
+
+/// 分类输入类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum CategoryType {
+    #[serde(alias = "RULESETS", alias = "rulesets")]
+    Rulesets,
+    #[serde(alias = "ABP", alias = "Abp", alias = "abp")]
+    Abp,
+    #[serde(alias = "ADG", alias = "Adg", alias = "adg")]
+    Adg,
+}
+
+impl Default for CategoryType {
+    fn default() -> Self {
+        Self::Rulesets
+    }
+}
 
 /// 规则类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -157,23 +175,116 @@ impl Ipv6CidrManager {
 }
 
 /// 解析单行规则
-fn parse_rule(line: &str, file_path: &str) -> Option<Rule> {
+fn parse_rule(line: &str, file_path: &str, category_type: CategoryType) -> Option<Rule> {
+    let normalized = normalize_line(line, category_type)?;
+    parse_ruleset_line(&normalized, file_path)
+}
+
+/// 输入规范化：将 Rulesets / ABP / ADG 统一转成 ruleset 风格
+fn normalize_line(line: &str, category_type: CategoryType) -> Option<String> {
+    match category_type {
+        CategoryType::Rulesets => normalize_ruleset_line(line),
+        CategoryType::Abp | CategoryType::Adg => normalize_adblock_line(line),
+    }
+}
+
+fn normalize_ruleset_line(line: &str) -> Option<String> {
     let line = line.trim();
     if line.is_empty() || line.starts_with('#') {
         return None;
     }
 
-    let parts: Vec<&str> = line.splitn(3, ',').collect();
-    if parts.len() < 2 {
+    Some(line.to_string())
+}
+
+fn normalize_adblock_line(line: &str) -> Option<String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('!') || line.starts_with('[') {
+        return None;
+    }
+
+    // 例外规则（@@）当前不参与 block 去重，先忽略，后续可扩展白名单通道
+    if line.starts_with("@@") {
+        return None;
+    }
+
+    // hosts 格式：0.0.0.0 example.com / 127.0.0.1 example.com
+    if line.starts_with("0.0.0.0 ") || line.starts_with("127.0.0.1 ") {
+        let mut segs = line.split_whitespace();
+        let _ip = segs.next();
+        if let Some(domain) = segs.next()
+            && is_plain_domain(domain)
+        {
+            return Some(format!("DOMAIN,{}", domain.to_lowercase()));
+        }
+        return None;
+    }
+
+    // Adblock 核心域名规则：||example.com^
+    if let Some(rest) = line.strip_prefix("||") {
+        let domain = trim_adblock_domain_token(rest);
+        if is_plain_domain(domain) {
+            return Some(format!("DOMAIN-SUFFIX,{}", domain.to_lowercase()));
+        }
+        return None;
+    }
+
+    // URL 锚点：|https://example.com^
+    if let Some(rest) = line.strip_prefix('|')
+        && (rest.starts_with("http://") || rest.starts_with("https://"))
+    {
+        let host = rest
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .split('/')
+            .next()
+            .unwrap_or_default();
+        let host = trim_adblock_domain_token(host);
+        if is_plain_domain(host) {
+            return Some(format!("DOMAIN,{}", host.to_lowercase()));
+        }
+        return None;
+    }
+
+    // 裸域名
+    let domain = trim_adblock_domain_token(line);
+    if is_plain_domain(domain) {
+        return Some(format!("DOMAIN-SUFFIX,{}", domain.to_lowercase()));
+    }
+
+    None
+}
+
+fn trim_adblock_domain_token(token: &str) -> &str {
+    token
+        .split(['^', '$', '/', '?', '#'])
+        .next()
+        .unwrap_or_default()
+        .trim_matches('.')
+}
+
+fn is_plain_domain(s: &str) -> bool {
+    !s.is_empty()
+        && s.contains('.')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+}
+
+fn parse_ruleset_line(line: &str, file_path: &str) -> Option<Rule> {
+    let line = line.trim();
+
+    let mut parts = line.splitn(3, ',');
+    let rule_type_raw = parts.next()?;
+    let Some(value) = parts.next() else {
         return Some(Rule {
             rule_type: RuleType::Other(line.to_string()),
             original_line: line.to_string(),
             category: file_path.to_string(),
         });
-    }
+    };
 
-    let rule_type_str = parts[0].trim().to_uppercase();
-    let value = parts[1].trim();
+    let rule_type_str = rule_type_raw.trim().to_uppercase();
+    let value = value.trim();
 
     let rule_type = match rule_type_str.as_str() {
         "DOMAIN" => RuleType::Domain(value.to_lowercase()),
@@ -204,7 +315,7 @@ fn parse_rule(line: &str, file_path: &str) -> Option<Rule> {
 }
 
 /// 读取单个文件的所有规则
-fn read_rules_from_file(file_path: &Path, category: &str) -> Vec<Rule> {
+fn read_rules_from_file(file_path: &Path, category: &str, category_type: CategoryType) -> Vec<Rule> {
     let file = match File::open(file_path) {
         Ok(f) => f,
         Err(e) => {
@@ -217,8 +328,8 @@ fn read_rules_from_file(file_path: &Path, category: &str) -> Vec<Rule> {
 
     reader
         .lines()
-        .filter_map(|line| line.ok())
-        .filter_map(|line| parse_rule(&line, category))
+        .map_while(Result::ok)
+        .filter_map(|line| parse_rule(&line, category, category_type))
         .collect()
 }
 
@@ -245,6 +356,8 @@ fn scan_rule_files(base_path: &Path) -> Vec<(std::path::PathBuf, String)> {
 
 /// 主去重逻辑
 fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
+    let total_rules = rules.len();
+
     // 第一步：收集所有规则
     let mut domains: Vec<(String, Rule)> = Vec::new();
     let mut domain_suffixes: Vec<(String, Rule)> = Vec::new();
@@ -282,18 +395,16 @@ fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
         }
     }
 
-    let mut result: Vec<Rule> = Vec::new();
+    let mut result: Vec<Rule> = Vec::with_capacity(total_rules);
 
     // 第二步：处理DOMAIN-KEYWORD（优先级最高，直接保留）
     // 先去重keyword本身
-    let unique_keywords: HashSet<String> = domain_keywords.clone();
     let mut seen_keywords: HashSet<String> = HashSet::new();
     for rule in domain_keyword_rules {
-        if let RuleType::DomainKeyword(k) = &rule.rule_type {
-            if !seen_keywords.contains(k) {
-                seen_keywords.insert(k.clone());
-                result.push(rule);
-            }
+        if let RuleType::DomainKeyword(k) = &rule.rule_type
+            && seen_keywords.insert(k.clone())
+        {
+            result.push(rule);
         }
     }
 
@@ -304,7 +415,7 @@ fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
         .into_iter()
         .filter(|(suffix, _)| {
             // 检查是否被某个keyword覆盖
-            !unique_keywords.iter().any(|kw| suffix.contains(kw))
+            !domain_keywords.iter().any(|kw| suffix.contains(kw))
         })
         .collect();
 
@@ -313,21 +424,19 @@ fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
     let mut suffix_set: HashSet<String> = HashSet::new();
 
     // 先按长度排序，短的优先（更宽泛的规则）
-    let mut sorted_suffixes = filtered_suffixes.clone();
-    sorted_suffixes.sort_by_key(|(s, _)| s.len());
+    let mut filtered_suffixes = filtered_suffixes;
+    filtered_suffixes.sort_unstable_by_key(|(s, _)| s.len());
 
-    for (suffix, _) in &sorted_suffixes {
-        if !suffix_trie.is_suffix_covered(suffix) && !suffix_set.contains(suffix) {
+    for (suffix, _) in &filtered_suffixes {
+        if !suffix_trie.is_suffix_covered(suffix) && suffix_set.insert(suffix.clone()) {
             suffix_trie.insert(suffix);
-            suffix_set.insert(suffix.clone());
         }
     }
 
     // 保留非冗余的后缀规则
     let mut seen_suffixes: HashSet<String> = HashSet::new();
     for (suffix, rule) in filtered_suffixes {
-        if suffix_set.contains(&suffix) && !seen_suffixes.contains(&suffix) {
-            seen_suffixes.insert(suffix);
+        if suffix_set.contains(&suffix) && seen_suffixes.insert(suffix) {
             result.push(rule);
         }
     }
@@ -337,7 +446,7 @@ fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
     let mut seen_domains: HashSet<String> = HashSet::new();
     for (domain, rule) in domains {
         // 检查是否被keyword覆盖
-        let covered_by_keyword = unique_keywords.iter().any(|kw| domain.contains(kw));
+        let covered_by_keyword = domain_keywords.iter().any(|kw| domain.contains(kw));
         if covered_by_keyword {
             continue;
         }
@@ -348,8 +457,7 @@ fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
         }
 
         // 去重
-        if !seen_domains.contains(&domain) {
-            seen_domains.insert(domain);
+        if seen_domains.insert(domain) {
             result.push(rule);
         }
     }
@@ -389,7 +497,7 @@ fn rule_order(rule: &Rule) -> u8 {
 }
 
 /// 按分类合并并写入文件
-fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) {
+fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) -> Result<(), String> {
     // 按分类分组
     let mut category_rules: HashMap<String, Vec<Rule>> = HashMap::new();
 
@@ -403,7 +511,7 @@ fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) {
     // 写入每个分类的文件
     for (category, mut rules) in category_rules {
         // 按规则类型排序
-        rules.sort_by_key(|r| rule_order(r));
+        rules.sort_unstable_by_key(rule_order);
 
         let output_path = base_path.join(format!("{}.list", category));
         let line_count = rules.len();
@@ -412,15 +520,21 @@ fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) {
             Ok(file) => {
                 let mut writer = BufWriter::new(file);
                 for rule in rules {
-                    writeln!(writer, "{}", rule.original_line).ok();
+                    writeln!(writer, "{}", rule.original_line)
+                        .map_err(|e| format!("写入文件失败 {:?}: {}", output_path, e))?;
                 }
+                writer
+                    .flush()
+                    .map_err(|e| format!("刷新文件失败 {:?}: {}", output_path, e))?;
                 println!("已写入: {} ({} 条规则)", output_path.display(), line_count);
             }
             Err(e) => {
-                eprintln!("无法写入文件 {:?}: {}", output_path, e);
+                return Err(format!("无法写入文件 {:?}: {}", output_path, e));
             }
         }
     }
+
+    Ok(())
 }
 
 /// 运行去重处理
@@ -431,7 +545,7 @@ fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) {
 /// # Returns
 /// * `Ok(())` - 成功
 /// * `Err(String)` - 错误信息
-pub fn run(spath: &str) -> Result<(), String> {
+pub fn run(spath: &str, category_types: &HashMap<String, CategoryType>) -> Result<(), String> {
     let base_path = Path::new(spath);
     if !base_path.exists() {
         return Err(format!("路径不存在: {}", spath));
@@ -447,7 +561,10 @@ pub fn run(spath: &str) -> Result<(), String> {
     println!("读取规则中...");
     let all_rules: Vec<Rule> = files
         .par_iter()
-        .flat_map(|(path, category)| read_rules_from_file(path, category))
+        .flat_map(|(path, category)| {
+            let category_type = category_types.get(category).copied().unwrap_or_default();
+            read_rules_from_file(path, category, category_type)
+        })
         .collect();
 
     let total_rules = all_rules.len();
@@ -472,7 +589,7 @@ pub fn run(spath: &str) -> Result<(), String> {
     println!("================================\n");
 
     // 按分类写入合并后的文件
-    write_rules_by_category(deduped_rules, base_path);
+    write_rules_by_category(deduped_rules, base_path)?;
 
     println!("去重完成!");
     Ok(())
@@ -524,13 +641,59 @@ mod tests {
 
     #[test]
     fn test_parse_rule() {
-        let rule = parse_rule("DOMAIN,example.com", "test.txt").unwrap();
+        let rule = parse_rule("DOMAIN,example.com", "test.txt", CategoryType::Rulesets).unwrap();
         assert!(matches!(rule.rule_type, RuleType::Domain(_)));
 
-        let rule = parse_rule("DOMAIN-SUFFIX,example.com", "test.txt").unwrap();
+        let rule = parse_rule(
+            "DOMAIN-SUFFIX,example.com",
+            "test.txt",
+            CategoryType::Rulesets,
+        )
+        .unwrap();
         assert!(matches!(rule.rule_type, RuleType::DomainSuffix(_)));
 
-        let rule = parse_rule("IP-CIDR,10.0.0.0/8", "test.txt").unwrap();
+        let rule = parse_rule("IP-CIDR,10.0.0.0/8", "test.txt", CategoryType::Rulesets).unwrap();
         assert!(matches!(rule.rule_type, RuleType::IpCidr(_)));
+    }
+
+    #[test]
+    fn test_deduplicate_rules_basic_coverage() {
+        let rules = vec![
+            parse_rule("DOMAIN-KEYWORD,test", "cat", CategoryType::Rulesets).unwrap(),
+            parse_rule("DOMAIN-SUFFIX,test.com", "cat", CategoryType::Rulesets).unwrap(),
+            parse_rule("DOMAIN,a.test.com", "cat", CategoryType::Rulesets).unwrap(),
+            parse_rule("IP-CIDR,10.0.0.0/8", "cat", CategoryType::Rulesets).unwrap(),
+            parse_rule("IP-CIDR,10.0.0.0/24", "cat", CategoryType::Rulesets).unwrap(),
+        ];
+
+        let deduped = deduplicate_rules(rules);
+
+        assert!(deduped
+            .iter()
+            .any(|r| matches!(r.rule_type, RuleType::DomainKeyword(_))));
+        assert!(!deduped
+            .iter()
+            .any(|r| matches!(r.rule_type, RuleType::DomainSuffix(_))));
+        assert!(!deduped
+            .iter()
+            .any(|r| matches!(r.rule_type, RuleType::Domain(_))));
+
+        let ipv4_count = deduped
+            .iter()
+            .filter(|r| matches!(r.rule_type, RuleType::IpCidr(_)))
+            .count();
+        assert_eq!(ipv4_count, 1);
+    }
+
+    #[test]
+    fn test_parse_abp_and_hosts_lines() {
+        let a = parse_rule("||example.com^", "cat", CategoryType::Abp).unwrap();
+        assert!(matches!(a.rule_type, RuleType::DomainSuffix(ref s) if s == "example.com"));
+
+        let b = parse_rule("0.0.0.0 ads.example.org", "cat", CategoryType::Adg).unwrap();
+        assert!(matches!(b.rule_type, RuleType::Domain(ref s) if s == "ads.example.org"));
+
+        let c = parse_rule("@@||whitelist.example.com^", "cat", CategoryType::Abp);
+        assert!(c.is_none());
     }
 }
