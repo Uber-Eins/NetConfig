@@ -27,3 +27,10 @@ urls = [
     "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/HTTPDNS.list",
 ]
 
+[categories.AI]
+type = "Rulesets"
+urls = [
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/OpenAI/OpenAI.list",
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Claude/Claude.list",
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Gemini/Gemini.list",
+]
