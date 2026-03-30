@@ -2,7 +2,7 @@ payload:
   - DOMAIN,makersuite.google.com
   - DOMAIN,ai.google.dev
   - DOMAIN,alkalimakersuite-pa.clients6.google.com
-  - DOMAIN-SUFFIX,anthropic.com
+  - DOMAIN-SUFFIX,identrust.com
   - DOMAIN-SUFFIX,auth0.com
   - DOMAIN-SUFFIX,claude.ai
   - DOMAIN-SUFFIX,stripe.com
@@ -11,15 +11,15 @@ payload:
   - DOMAIN-SUFFIX,chatgpt.com
   - DOMAIN-SUFFIX,intercom.io
   - DOMAIN-SUFFIX,deepmind.com
-  - DOMAIN-SUFFIX,identrust.com
-  - DOMAIN-SUFFIX,oaistatic.com
+  - DOMAIN-SUFFIX,anthropic.com
   - DOMAIN-SUFFIX,observeit.net
-  - DOMAIN-SUFFIX,intercomcdn.com
-  - DOMAIN-SUFFIX,bard.google.com
-  - DOMAIN-SUFFIX,deepmind.google
+  - DOMAIN-SUFFIX,oaistatic.com
   - DOMAIN-SUFFIX,apis.google.com
+  - DOMAIN-SUFFIX,deepmind.google
+  - DOMAIN-SUFFIX,bard.google.com
+  - DOMAIN-SUFFIX,intercomcdn.com
+  - DOMAIN-SUFFIX,api.statsig.com
   - DOMAIN-SUFFIX,launchdarkly.com
-  - DOMAIN-SUFFIX,featuregates.org
   - DOMAIN-SUFFIX,gemini.google.com
   - DOMAIN-SUFFIX,host.livekit.cloud
   - DOMAIN-SUFFIX,oaiusercontent.com
@@ -33,5 +33,5 @@ payload:
   - DOMAIN-KEYWORD,developerprofiles
   - DOMAIN-KEYWORD,colab
   - DOMAIN-KEYWORD,openai
-  - IP-CIDR,64.23.132.171/32,no-resolve
   - IP-CIDR,24.199.123.28/32,no-resolve
+  - IP-CIDR,64.23.132.171/32,no-resolve
