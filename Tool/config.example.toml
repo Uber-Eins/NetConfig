@@ -1,5 +1,3 @@
-# Clash 规则去重工具配置文件
-
 # 临时文件存放路径（下载的规则文件会按分类存放在此目录下）
 temp_dir = "/tmp/clash_rules"
 
@@ -12,64 +10,58 @@ concurrent_downloads = 20
 
 # 分类定义
 # 格式: [categories.分类名]
-#       type = "Rulesets" # 可选: Rulesets / ABP / ADG，默认 Rulesets
+#       geosite = "CN"                      # 可选
+#       geosite_db = "https://.../geosite.dat"  # geosite 配套数据库
 #       urls = ["url1", "url2", ...]
 
+[categories.CN]
+geosite = "CN"
+geosite_db = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
+urls = [
+    "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list",
+    "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaCompanyIp.list",
+]
+
 [categories.Advertising]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list",
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanEasyList.list",
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanEasyListChina.list",
 ]
 
-[categories.China]
-type = "Rulesets"
-urls = [
-    "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list",
-    "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaCompanyIp.list",
-]
-
 [categories.Proxy]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyGFWlist.list",
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyMedia.list",
 ]
 
 [categories.Microsoft]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Microsoft.list",
 ]
 
 [categories.Apple]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Apple.list",
 ]
 
 [categories.Google]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/GoogleFCM.list",
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Google.list",
 ]
 
 [categories.Telegram]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Telegram.list",
 ]
 
 [categories.Netflix]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Netflix.list",
 ]
 
 [categories.YouTube]
-type = "Rulesets"
 urls = [
     "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/YouTube.list",
 ]

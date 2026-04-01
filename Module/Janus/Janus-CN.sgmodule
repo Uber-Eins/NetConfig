@@ -1,0 +1,9 @@
+#!name=Janus-CN
+#!desc=CN
+#!author=Uber-Eins
+#!repo=https://github.com/Uber-Eins/NetConfig
+#!category=Janus
+
+[Rule]
+RULE-SET,https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/China-ASN.list
+RULE-SET,https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/CN.list

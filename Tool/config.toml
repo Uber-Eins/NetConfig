@@ -1,5 +1,3 @@
-# Clash 规则去重工具配置文件
-
 # 临时文件存放路径（下载的规则文件会按分类存放在此目录下）
 temp_dir = "/tmp/rules"
 
@@ -12,11 +10,11 @@ concurrent_downloads = 16
 
 # 分类定义
 # 格式: [categories.分类名]
-#       type = "Rulesets" # 可选: Rulesets / ABP / ADG，默认 Rulesets
+#       geosite = "CN"                      # 可选
+#       geosite_db = "https://.../geosite.dat"  # geosite 配套数据库
 #       urls = ["url1", "url2", ...]
 
-[categories.Block]
-type = "Rulesets"
+[categories.REJECT]
 urls = [
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Surge/Advertising/Advertising_All.list",
     "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-surge.txt",
@@ -27,10 +25,16 @@ urls = [
     "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/HTTPDNS.list",
 ]
 
-[categories.AI]
-type = "Rulesets"
+[categories.LLM]
 urls = [
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/OpenAI/OpenAI.list",
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Claude/Claude.list",
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Gemini/Gemini.list",
+]
+
+[categories.CN]
+geosite = "CN"
+geosite_db = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
+urls = [
+    "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Surge/ChinaMaxNoIP/ChinaMaxNoIP_All.list",
 ]

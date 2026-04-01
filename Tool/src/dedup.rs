@@ -1,28 +1,10 @@
 use ipnet::{Ipv4Net, Ipv6Net};
 use rayon::prelude::*;
-use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-
-/// 分类输入类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum CategoryType {
-    #[serde(alias = "RULESETS", alias = "rulesets")]
-    Rulesets,
-    #[serde(alias = "ABP", alias = "Abp", alias = "abp")]
-    Abp,
-    #[serde(alias = "ADG", alias = "Adg", alias = "adg")]
-    Adg,
-}
-
-impl Default for CategoryType {
-    fn default() -> Self {
-        Self::Rulesets
-    }
-}
 
 /// 规则类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -32,7 +14,7 @@ enum RuleType {
     DomainKeyword(String),
     IpCidr(Ipv4Net),
     IpCidr6(Ipv6Net),
-    Other(String), // 其他规则类型，直接保留
+    Other,
 }
 
 /// 解析后的规则
@@ -41,6 +23,12 @@ struct Rule {
     rule_type: RuleType,
     original_line: String,
     category: String, // 分类名称（从目录结构提取）
+}
+
+#[derive(Debug)]
+struct RuleFile {
+    path: PathBuf,
+    category: String,
 }
 
 /// 域名后缀Trie树节点
@@ -175,111 +163,23 @@ impl Ipv6CidrManager {
 }
 
 /// 解析单行规则
-fn parse_rule(line: &str, file_path: &str, category_type: CategoryType) -> Option<Rule> {
-    let normalized = normalize_line(line, category_type)?;
-    parse_ruleset_line(&normalized, file_path)
-}
-
-/// 输入规范化：将 Rulesets / ABP / ADG 统一转成 ruleset 风格
-fn normalize_line(line: &str, category_type: CategoryType) -> Option<String> {
-    match category_type {
-        CategoryType::Rulesets => normalize_ruleset_line(line),
-        CategoryType::Abp | CategoryType::Adg => normalize_adblock_line(line),
-    }
-}
-
-fn normalize_ruleset_line(line: &str) -> Option<String> {
+fn parse_rule(line: &str, category: &str) -> Option<Rule> {
     let line = line.trim();
     if line.is_empty() || line.starts_with('#') {
         return None;
     }
 
-    Some(line.to_string())
+    parse_ruleset_line(line, category)
 }
 
-fn normalize_adblock_line(line: &str) -> Option<String> {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with('!') || line.starts_with('[') {
-        return None;
-    }
-
-    // 例外规则（@@）当前不参与 block 去重，先忽略，后续可扩展白名单通道
-    if line.starts_with("@@") {
-        return None;
-    }
-
-    // hosts 格式：0.0.0.0 example.com / 127.0.0.1 example.com
-    if line.starts_with("0.0.0.0 ") || line.starts_with("127.0.0.1 ") {
-        let mut segs = line.split_whitespace();
-        let _ip = segs.next();
-        if let Some(domain) = segs.next()
-            && is_plain_domain(domain)
-        {
-            return Some(format!("DOMAIN,{}", domain.to_lowercase()));
-        }
-        return None;
-    }
-
-    // Adblock 核心域名规则：||example.com^
-    if let Some(rest) = line.strip_prefix("||") {
-        let domain = trim_adblock_domain_token(rest);
-        if is_plain_domain(domain) {
-            return Some(format!("DOMAIN-SUFFIX,{}", domain.to_lowercase()));
-        }
-        return None;
-    }
-
-    // URL 锚点：|https://example.com^
-    if let Some(rest) = line.strip_prefix('|')
-        && (rest.starts_with("http://") || rest.starts_with("https://"))
-    {
-        let host = rest
-            .trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .split('/')
-            .next()
-            .unwrap_or_default();
-        let host = trim_adblock_domain_token(host);
-        if is_plain_domain(host) {
-            return Some(format!("DOMAIN,{}", host.to_lowercase()));
-        }
-        return None;
-    }
-
-    // 裸域名
-    let domain = trim_adblock_domain_token(line);
-    if is_plain_domain(domain) {
-        return Some(format!("DOMAIN-SUFFIX,{}", domain.to_lowercase()));
-    }
-
-    None
-}
-
-fn trim_adblock_domain_token(token: &str) -> &str {
-    token
-        .split(['^', '$', '/', '?', '#'])
-        .next()
-        .unwrap_or_default()
-        .trim_matches('.')
-}
-
-fn is_plain_domain(s: &str) -> bool {
-    !s.is_empty()
-        && s.contains('.')
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
-}
-
-fn parse_ruleset_line(line: &str, file_path: &str) -> Option<Rule> {
-    let line = line.trim();
-
+fn parse_ruleset_line(line: &str, category: &str) -> Option<Rule> {
     let mut parts = line.splitn(3, ',');
     let rule_type_raw = parts.next()?;
     let Some(value) = parts.next() else {
         return Some(Rule {
-            rule_type: RuleType::Other(line.to_string()),
+            rule_type: RuleType::Other,
             original_line: line.to_string(),
-            category: file_path.to_string(),
+            category: category.to_string(),
         });
     };
 
@@ -294,28 +194,28 @@ fn parse_ruleset_line(line: &str, file_path: &str) -> Option<Rule> {
             if let Ok(net) = value.parse::<Ipv4Net>() {
                 RuleType::IpCidr(net)
             } else {
-                RuleType::Other(line.to_string())
+                RuleType::Other
             }
         }
         "IP-CIDR6" => {
             if let Ok(net) = value.parse::<Ipv6Net>() {
                 RuleType::IpCidr6(net)
             } else {
-                RuleType::Other(line.to_string())
+                RuleType::Other
             }
         }
-        _ => RuleType::Other(line.to_string()),
+        _ => RuleType::Other,
     };
 
     Some(Rule {
         rule_type,
         original_line: line.to_string(),
-        category: file_path.to_string(),
+        category: category.to_string(),
     })
 }
 
 /// 读取单个文件的所有规则
-fn read_rules_from_file(file_path: &Path, category: &str, category_type: CategoryType) -> Vec<Rule> {
+fn read_rules_from_file(file_path: &Path, category: &str) -> Vec<Rule> {
     let file = match File::open(file_path) {
         Ok(f) => f,
         Err(e) => {
@@ -329,12 +229,12 @@ fn read_rules_from_file(file_path: &Path, category: &str, category_type: Categor
     reader
         .lines()
         .map_while(Result::ok)
-        .filter_map(|line| parse_rule(&line, category, category_type))
+        .filter_map(|line| parse_rule(&line, category))
         .collect()
 }
 
-/// 扫描目录获取所有规则文件，返回 (文件路径, 分类名称)
-fn scan_rule_files(base_path: &Path) -> Vec<(std::path::PathBuf, String)> {
+/// 扫描目录获取所有规则文件
+fn scan_rule_files(base_path: &Path) -> Vec<RuleFile> {
     WalkDir::new(base_path)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -349,7 +249,7 @@ fn scan_rule_files(base_path: &Path) -> Vec<(std::path::PathBuf, String)> {
                 .as_os_str()
                 .to_string_lossy()
                 .to_string();
-            Some((path, category))
+            Some(RuleFile { path, category })
         })
         .collect()
 }
@@ -389,7 +289,7 @@ fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
                 ipv6_manager.add(*net);
                 ipv6_rules.insert(*net, rule);
             }
-            RuleType::Other(_) => {
+            RuleType::Other => {
                 other_rules.push(rule);
             }
         }
@@ -492,14 +392,14 @@ fn rule_order(rule: &Rule) -> u8 {
         RuleType::DomainKeyword(_) => 2,
         RuleType::IpCidr(_) => 3,
         RuleType::IpCidr6(_) => 4,
-        RuleType::Other(_) => 5,
+        RuleType::Other => 5,
     }
 }
 
 /// 按分类合并并写入文件
 fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) -> Result<(), String> {
     // 按分类分组
-    let mut category_rules: HashMap<String, Vec<Rule>> = HashMap::new();
+    let mut category_rules: BTreeMap<String, Vec<Rule>> = BTreeMap::new();
 
     for rule in rules {
         category_rules
@@ -511,7 +411,11 @@ fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) -> Result<(), Str
     // 写入每个分类的文件
     for (category, mut rules) in category_rules {
         // 按规则类型排序
-        rules.sort_unstable_by_key(rule_order);
+        rules.sort_unstable_by(|left, right| {
+            rule_order(left)
+                .cmp(&rule_order(right))
+                .then_with(|| left.original_line.cmp(&right.original_line))
+        });
 
         let output_path = base_path.join(format!("{}.list", category));
         let line_count = rules.len();
@@ -538,20 +442,19 @@ fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) -> Result<(), Str
 }
 
 /// 运行去重处理
-/// 
+///
 /// # Arguments
-/// * `spath` - 规则文件所在的基础路径
-/// 
+/// * `base_path` - 规则文件所在的基础路径
+///
 /// # Returns
 /// * `Ok(())` - 成功
 /// * `Err(String)` - 错误信息
-pub fn run(spath: &str, category_types: &HashMap<String, CategoryType>) -> Result<(), String> {
-    let base_path = Path::new(spath);
+pub fn run(base_path: &Path) -> Result<(), String> {
     if !base_path.exists() {
-        return Err(format!("路径不存在: {}", spath));
+        return Err(format!("路径不存在: {}", base_path.display()));
     }
 
-    println!("扫描规则文件: {}", spath);
+    println!("扫描规则文件: {}", base_path.display());
 
     // 扫描所有规则文件
     let files = scan_rule_files(base_path);
@@ -561,10 +464,7 @@ pub fn run(spath: &str, category_types: &HashMap<String, CategoryType>) -> Resul
     println!("读取规则中...");
     let all_rules: Vec<Rule> = files
         .par_iter()
-        .flat_map(|(path, category)| {
-            let category_type = category_types.get(category).copied().unwrap_or_default();
-            read_rules_from_file(path, category, category_type)
-        })
+        .flat_map(|file| read_rules_from_file(&file.path, &file.category))
         .collect();
 
     let total_rules = all_rules.len();
@@ -641,42 +541,43 @@ mod tests {
 
     #[test]
     fn test_parse_rule() {
-        let rule = parse_rule("DOMAIN,example.com", "test.txt", CategoryType::Rulesets).unwrap();
+        let rule = parse_rule("DOMAIN,example.com", "test.txt").unwrap();
         assert!(matches!(rule.rule_type, RuleType::Domain(_)));
 
-        let rule = parse_rule(
-            "DOMAIN-SUFFIX,example.com",
-            "test.txt",
-            CategoryType::Rulesets,
-        )
-        .unwrap();
+        let rule = parse_rule("DOMAIN-SUFFIX,example.com", "test.txt").unwrap();
         assert!(matches!(rule.rule_type, RuleType::DomainSuffix(_)));
 
-        let rule = parse_rule("IP-CIDR,10.0.0.0/8", "test.txt", CategoryType::Rulesets).unwrap();
+        let rule = parse_rule("IP-CIDR,10.0.0.0/8", "test.txt").unwrap();
         assert!(matches!(rule.rule_type, RuleType::IpCidr(_)));
     }
 
     #[test]
     fn test_deduplicate_rules_basic_coverage() {
         let rules = vec![
-            parse_rule("DOMAIN-KEYWORD,test", "cat", CategoryType::Rulesets).unwrap(),
-            parse_rule("DOMAIN-SUFFIX,test.com", "cat", CategoryType::Rulesets).unwrap(),
-            parse_rule("DOMAIN,a.test.com", "cat", CategoryType::Rulesets).unwrap(),
-            parse_rule("IP-CIDR,10.0.0.0/8", "cat", CategoryType::Rulesets).unwrap(),
-            parse_rule("IP-CIDR,10.0.0.0/24", "cat", CategoryType::Rulesets).unwrap(),
+            parse_rule("DOMAIN-KEYWORD,test", "cat").unwrap(),
+            parse_rule("DOMAIN-SUFFIX,test.com", "cat").unwrap(),
+            parse_rule("DOMAIN,a.test.com", "cat").unwrap(),
+            parse_rule("IP-CIDR,10.0.0.0/8", "cat").unwrap(),
+            parse_rule("IP-CIDR,10.0.0.0/24", "cat").unwrap(),
         ];
 
         let deduped = deduplicate_rules(rules);
 
-        assert!(deduped
-            .iter()
-            .any(|r| matches!(r.rule_type, RuleType::DomainKeyword(_))));
-        assert!(!deduped
-            .iter()
-            .any(|r| matches!(r.rule_type, RuleType::DomainSuffix(_))));
-        assert!(!deduped
-            .iter()
-            .any(|r| matches!(r.rule_type, RuleType::Domain(_))));
+        assert!(
+            deduped
+                .iter()
+                .any(|r| matches!(r.rule_type, RuleType::DomainKeyword(_)))
+        );
+        assert!(
+            !deduped
+                .iter()
+                .any(|r| matches!(r.rule_type, RuleType::DomainSuffix(_)))
+        );
+        assert!(
+            !deduped
+                .iter()
+                .any(|r| matches!(r.rule_type, RuleType::Domain(_)))
+        );
 
         let ipv4_count = deduped
             .iter()
@@ -686,14 +587,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_abp_and_hosts_lines() {
-        let a = parse_rule("||example.com^", "cat", CategoryType::Abp).unwrap();
-        assert!(matches!(a.rule_type, RuleType::DomainSuffix(ref s) if s == "example.com"));
-
-        let b = parse_rule("0.0.0.0 ads.example.org", "cat", CategoryType::Adg).unwrap();
-        assert!(matches!(b.rule_type, RuleType::Domain(ref s) if s == "ads.example.org"));
-
-        let c = parse_rule("@@||whitelist.example.com^", "cat", CategoryType::Abp);
-        assert!(c.is_none());
+    fn test_parse_rule_skips_comments_and_blank_lines() {
+        assert!(parse_rule("# comment", "cat").is_none());
+        assert!(parse_rule("   ", "cat").is_none());
     }
 }
