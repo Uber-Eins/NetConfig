@@ -26,6 +26,7 @@ payload:
   - 'DOMAIN-SUFFIX,oaiusercontent.com'
   - 'DOMAIN-SUFFIX,observeit.net'
   - 'DOMAIN-SUFFIX,proactivebackend-pa.googleapis.com'
+  - 'DOMAIN-SUFFIX,sentry.io'
   - 'DOMAIN-SUFFIX,turn.livekit.cloud'
   - 'DOMAIN-KEYWORD,colab'
   - 'DOMAIN-KEYWORD,developerprofiles'
