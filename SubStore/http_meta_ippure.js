@@ -26,9 +26,9 @@
  * - [cache] 使用缓存. 默认不使用缓存
  * - [disable_failed_cache/ignore_failed_error] 禁用失败缓存. 即不缓存失败结果
  *
- * 插入格式: [fraudScore|住宅/机房|原生/广播] 节点名
- * - isResidential 为 true 时显示住宅, 否则显示机房
- * - isBroadcast 为 true 时显示原生, 否则显示广播
+ * 插入格式: [fraudScore|🏠/🏢|🌱/📡] 节点名
+ * - isResidential 为 true 时显示🏠, 否则显示🏢
+ * - isBroadcast 为 true 时显示🌱, 否则显示📡
  */
 
 async function operator(proxies = [], targetPlatform, context) {
@@ -237,14 +237,14 @@ async function operator(proxies = [], targetPlatform, context) {
     }
 
     function insertIPPureTag(name = '', api = {}) {
-        const cleanedName = String(name).replace(/^\[(?:-?\d+(?:\.\d+)?|-)\|(?:住宅|机房)\|(?:原生|广播)\]\s*/g, '')
+        const cleanedName = String(name).replace(/^\[(?:-?\d+(?:\.\d+)?|-)\|(?:🏠|🏢)\|(?:🌱|📡)\]\s*/g, '')
         return `${buildIPPureTag(api)} ${cleanedName}`
     }
 
     function buildIPPureTag(api = {}) {
         const score = api.fraudScore ?? '-'
-        const residential = toBoolean(api.isResidential) ? '住宅' : '机房'
-        const broadcast = toBoolean(api.isBroadcast) ? '原生' : '广播'
+        const residential = toBoolean(api.isResidential) ? '🏠' : '🏢'
+        const broadcast = toBoolean(api.isBroadcast) ? '🌱' : '📡'
         return `[${score}|${residential}|${broadcast}]`
     }
 
