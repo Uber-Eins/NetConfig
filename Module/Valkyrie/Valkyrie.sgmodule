@@ -9,7 +9,7 @@ force-http-engine-hosts = %APPEND% 119.29.29.29:80,dns.weixin.qq.com:443,dns.wei
 
 [Rule]
 AND,((NOT,((DOMAIN-SUFFIX,qiekj.com))), (USER-AGENT,*QEUser*)),REJECT-DROP // 胖乖生活
-RULE-SET,https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Block.list,REJECT-DROP,pre-matching,extended-matching
+RULE-SET,https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/REJECT.list,REJECT-DROP,pre-matching,extended-matching
 
 [URL Rewrite]
 "^http:\/\/101\.35\.204\.35\/d" - reject
