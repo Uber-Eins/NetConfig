@@ -25,6 +25,9 @@
  * - [remove_incompatible] remove nodes that cannot be produced for ClashMeta
  * - [include_unsupported_proxy] pass unsupported proxy types to ClashMeta
  * - [dialer_proxy/front_proxy/upstream_proxy] front proxy URL, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:7891
+ * - [asn_lookup/internal] use MMDB ipaso/geoip lookup, default: true
+ * - [mmdb_country_path] MaxMind GeoLite2 Country database path
+ * - [mmdb_asn_path] MaxMind GeoLite2 ASN database path
  * - [node_info] keep _node_info field
  * - [incompatible] keep _incompatible field
  *
@@ -56,6 +59,12 @@ async function operator(proxies = [], targetPlatform, context) {
     const ntp = $arguments.ntp || 'time.apple.com'
     const frontProxyUrl = $arguments.dialer_proxy || $arguments.front_proxy || $arguments.upstream_proxy
     const frontProxy = parseFrontProxy(frontProxyUrl)
+    const asnLookupEnabled = hasArgument('asn_lookup')
+        ? toBoolean($arguments.asn_lookup)
+        : hasArgument('internal')
+            ? toBoolean($arguments.internal)
+            : true
+    const asnLookup = asnLookupEnabled ? createAsnLookup($, $arguments.mmdb_country_path, $arguments.mmdb_asn_path) : undefined
 
     const internalProxies = []
     proxies.forEach((proxy, index) => {
@@ -93,7 +102,7 @@ async function operator(proxies = [], targetPlatform, context) {
 
     const pendingProxies = []
     for (const proxy of internalProxies) {
-        const id = getCacheId({ proxy, url, udpEnabled, ntp, frontProxyUrl })
+        const id = getCacheId({ proxy, url, udpEnabled, ntp, frontProxyUrl, asnLookupEnabled })
         const cached = cacheEnabled ? cache.get(id) : undefined
 
         if (cacheEnabled && cached) {
@@ -195,7 +204,7 @@ async function operator(proxies = [], targetPlatform, context) {
     }
 
     async function check(proxy, port) {
-        const id = cacheEnabled ? getCacheId({ proxy, url, udpEnabled, ntp, frontProxyUrl }) : undefined
+        const id = cacheEnabled ? getCacheId({ proxy, url, udpEnabled, ntp, frontProxyUrl, asnLookupEnabled }) : undefined
         const startedAt = Date.now()
         let info
         let udp = false
@@ -208,7 +217,7 @@ async function operator(proxies = [], targetPlatform, context) {
             }
 
             if (isValidNodeInfo(info)) {
-                const result = { info, udp }
+                const result = { info: enrichNodeInfo(info), udp }
                 applyCheckResult(proxy, result)
                 $.info(`[${proxy.name}] latency: ${Date.now() - startedAt}, node: ${buildNodeTag(info, udp)}`)
                 $.log(`[${proxy.name}] api: ${JSON.stringify(info, null, 2)}`)
@@ -255,6 +264,24 @@ async function operator(proxies = [], targetPlatform, context) {
         return undefined
     }
 
+    function enrichNodeInfo(info = {}) {
+        if (!isValidNodeInfo(info) || !asnLookup) {
+            return info
+        }
+
+        const lookup = asnLookup(info.ip)
+        if (!lookup.countryCode && !lookup.aso && !lookup.asn) {
+            return info
+        }
+
+        return {
+            ...info,
+            countryCode: lookup.countryCode || info.countryCode,
+            asn: lookup.asn || info.asn,
+            aso: lookup.aso || info.aso,
+        }
+    }
+
     async function checkUdp(proxy, port) {
         try {
             const timeout = parseFloat($arguments.udp_timeout || $arguments.timeout || 5000)
@@ -284,8 +311,9 @@ async function operator(proxies = [], targetPlatform, context) {
     function applyCheckResult(proxy, result = {}) {
         const index = proxy._proxies_index
         if (result.info) {
-            proxies[index]._node_info = result.info
-            proxies[index]._ippure = result.info
+            const info = enrichNodeInfo(result.info)
+            proxies[index]._node_info = info
+            proxies[index]._ippure = info
         }
         proxies[index]._udp = result.udp === true
     }
@@ -355,7 +383,7 @@ function formatProxyName(proxy = {}) {
     const parts = [getPurityLabel(info), pickResidentialIcon(info.isResidential), pickBroadcastIcon(info.isBroadcast)]
     const multiplier = findMultiplier(getOriginalName(proxy)) || (hasOriginalName(proxy) ? '' : findMultiplier(proxy.name))
     const flag = getFlag(info.countryCode || info.country || info.country_code)
-    const organization = firstText(info.asOrganization, info.aso, info.isp, info.org, info.as, info.asname)
+    const organization = getOrganization(info)
 
     if (proxy._udp === true) {
         parts.push('UDP')
@@ -470,6 +498,61 @@ function formatMultiplier(value) {
     return String(number)
 }
 
+function createAsnLookup($, mmdbCountryPath, mmdbAsnPath) {
+    try {
+        if (typeof ProxyUtils === 'undefined' || !ProxyUtils.MMDB) {
+            $.info('[MMDB] ProxyUtils.MMDB 不可用, 使用 IPPure API 的组织名称')
+            return undefined
+        }
+
+        const utils = new ProxyUtils.MMDB({ country: mmdbCountryPath, asn: mmdbAsnPath })
+        $.info('[MMDB] 启用 GeoIP/ASN 查询修正落地名称')
+
+        return ip => {
+            if (!ip) {
+                return {}
+            }
+
+            return {
+                countryCode: utils.geoip ? utils.geoip(ip) || '' : '',
+                aso: utils.ipaso ? utils.ipaso(ip) || '' : '',
+                asn: utils.ipasn ? utils.ipasn(ip) || '' : '',
+            }
+        }
+    } catch (e) {
+        $.info(`[MMDB] 初始化失败, 使用 IPPure API 的组织名称: ${e.message ?? e}`)
+        return undefined
+    }
+}
+
+function getOrganization(info = {}) {
+    const values = [
+        info.aso,
+        info.asOrganization,
+        info.isp,
+        info.org,
+        info.asname,
+        info.as,
+    ]
+
+    for (const value of values) {
+        const text = String(value ?? '').trim()
+        if (text && !isGenericOrganization(text)) {
+            return text
+        }
+    }
+
+    if (info.asn) {
+        return `AS${info.asn}`
+    }
+
+    return ''
+}
+
+function isGenericOrganization(value = '') {
+    return /^(?:private customer|customer|unknown|anonymous|not available|n\/a)(?:\b|$)/i.test(String(value).trim())
+}
+
 function parseFrontProxy(value) {
     const raw = String(value || '').trim()
     if (!raw) {
@@ -567,8 +650,8 @@ function lodashGet(source, path, defaultValue = undefined) {
     return result
 }
 
-function getCacheId({ proxy = {}, url, udpEnabled, ntp, frontProxyUrl }) {
-    return `http-meta:node-info:${url}:${udpEnabled}:${ntp}:${frontProxyUrl || ''}:${JSON.stringify(
+function getCacheId({ proxy = {}, url, udpEnabled, ntp, frontProxyUrl, asnLookupEnabled }) {
+    return `http-meta:node-info:v2:${url}:${udpEnabled}:${ntp}:${frontProxyUrl || ''}:${asnLookupEnabled}:${JSON.stringify(
         Object.fromEntries(Object.entries(proxy).filter(([key]) => !/^(name|collectionName|subName|id|_.*)$/i.test(key)))
     )}`
 }
