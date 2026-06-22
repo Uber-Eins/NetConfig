@@ -26,9 +26,10 @@
  * - [cache] 使用缓存. 默认不使用缓存
  * - [disable_failed_cache/ignore_failed_error] 禁用失败缓存. 即不缓存失败结果
  *
- * 插入格式: [fraudScore|🏠/🏢|🌱/📡] 节点名
+ * 插入格式: [fraudScore/IPv6|🏠/🏢|🌱/📡] 节点名
  * - isResidential 为 true 时显示🏠, 否则显示🏢
  * - isBroadcast 为 true 时显示🌱, 否则显示📡
+ * - IPPure 对 IPv6 不返回 fraudScore 时显示 IPv6, 不视为失败
  */
 
 async function operator(proxies = [], targetPlatform, context) {
@@ -237,19 +238,36 @@ async function operator(proxies = [], targetPlatform, context) {
     }
 
     function insertIPPureTag(name = '', api = {}) {
-        const cleanedName = String(name).replace(/^\[(?:-?\d+(?:\.\d+)?|-)\|(?:🏠|🏢)\|(?:🌱|📡)\]\s*/g, '')
+        const cleanedName = stripKnownPrefixTags(name)
         return `${buildIPPureTag(api)} ${cleanedName}`
     }
 
+    function stripKnownPrefixTags(name = '') {
+        let result = String(name)
+        let previous
+        do {
+            previous = result
+            result = result
+                .trimStart()
+                .replace(/^\[UDP\]\s*/i, '')
+                .replace(/^\[(?:IPv6|-?\d+(?:\.\d+)?|-)\|(?:🏠|🏢)\|(?:🌱|📡)(?:\|UDP)?(?:\|x\d+(?:\.\d+)?)?\]\s*/i, '')
+        } while (result !== previous)
+        return result
+    }
+
     function buildIPPureTag(api = {}) {
-        const score = api.fraudScore ?? '-'
+        const score = Object.prototype.hasOwnProperty.call(api, 'fraudScore') ? api.fraudScore : isIPv6(api.ip) ? 'IPv6' : '-'
         const residential = toBoolean(api.isResidential) ? '🏠' : '🏢'
         const broadcast = toBoolean(api.isBroadcast) ? '🌱' : '📡'
         return `[${score}|${residential}|${broadcast}]`
     }
 
     function isValidIPPureResult(api) {
-        return api && typeof api === 'object' && Object.prototype.hasOwnProperty.call(api, 'fraudScore')
+        return api && typeof api === 'object' && Boolean(api.ip || api.countryCode || api.country || api.asOrganization || Object.prototype.hasOwnProperty.call(api, 'fraudScore'))
+    }
+
+    function isIPv6(value = '') {
+        return String(value || '').includes(':')
     }
 
     function toBoolean(value) {
