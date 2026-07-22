@@ -30,7 +30,6 @@ payload:
   - 'DOMAIN-SUFFIX,deepmind.com'
   - 'DOMAIN-SUFFIX,deepmind.google'
   - 'DOMAIN-SUFFIX,edgeservices.bing.com'
-  - 'DOMAIN-SUFFIX,featuregates.org'
   - 'DOMAIN-SUFFIX,gemini.google.com'
   - 'DOMAIN-SUFFIX,generativeai.google'
   - 'DOMAIN-SUFFIX,host.livekit.cloud'
