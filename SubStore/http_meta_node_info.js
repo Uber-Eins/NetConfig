@@ -21,7 +21,7 @@
  * - [concurrency] default: 10
  * - [cache] use Sub-Store scriptResourceCache
  * - [disable_failed_cache/ignore_failed_error] do not reuse failed cache
- * - [remove_failed] remove nodes without valid IPPure response
+ * - [remove_failed] remove nodes without valid IPPure response; otherwise fall back to IP + local MMDB naming
  * - [remove_incompatible] remove nodes that cannot be produced for ClashMeta
  * - [include_unsupported_proxy] pass unsupported proxy types to ClashMeta
  * - [dialer_proxy/front_proxy/upstream_proxy] front proxy URL, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:7891
@@ -67,6 +67,7 @@ async function operator(proxies = [], targetPlatform, context) {
         delete proxy._node_info
         delete proxy._ippure
         delete proxy._udp
+        delete proxy._check_failed
 
         try {
             const node = ProxyUtils.produce([{ ...proxy }], 'ClashMeta', 'internal', {
@@ -100,13 +101,14 @@ async function operator(proxies = [], targetPlatform, context) {
         const cached = cacheEnabled ? cache.get(id) : undefined
 
         if (cacheEnabled && cached) {
-            if (isCacheComplete(cached, udpEnabled)) {
-                $.info(`[${proxy.name}] 使用成功缓存`)
+            if (cached.failed && !disableFailedCache) {
+                $.info(`[${proxy.name}] 使用失败缓存`)
                 applyCheckResult(proxy, cached)
                 continue
             }
-            if (cached.failed && !disableFailedCache) {
-                $.info(`[${proxy.name}] 使用失败缓存`)
+            if (isCacheComplete(cached, udpEnabled)) {
+                $.info(`[${proxy.name}] 使用成功缓存`)
+                applyCheckResult(proxy, cached)
                 continue
             }
             $.info(`[${proxy.name}] 不使用失败缓存`)
@@ -202,21 +204,36 @@ async function operator(proxies = [], targetPlatform, context) {
         const startedAt = Date.now()
         let info
         let udp = false
+        let ippureFailed = false
 
         try {
-            info = await checkIPPure(proxy, port)
+            try {
+                info = await checkIPPure(proxy, port)
+            } catch (e) {
+                $.info(`[${proxy.name}] IPPure 检测失败: ${e.message ?? e}`)
+            }
+
+            if (!isValidIPPureInfo(info)) {
+                ippureFailed = true
+                const ip = firstText(info?.ip, getNodeIp(proxy))
+                if (!ip) {
+                    throw new Error('节点 server 不是已解析的 IPv4/IPv6 地址')
+                }
+                $.info(`[${proxy.name}] IPPure 无有效数据，使用节点 IP ${ip} 查询本地 MMDB`)
+                info = { ip }
+            }
 
             if (udpEnabled) {
                 udp = await checkUdp(proxy, port)
             }
 
             if (isValidNodeInfo(info)) {
-                const result = { info: enrichNodeInfo(info), udp }
+                const result = { info: enrichNodeInfo(info), udp, failed: ippureFailed }
                 applyCheckResult(proxy, result)
                 $.info(`[${proxy.name}] latency: ${Date.now() - startedAt}, node: ${buildNodeTag(info, udp)}`)
                 $.log(`[${proxy.name}] api: ${JSON.stringify(info, null, 2)}`)
                 if (cacheEnabled) {
-                    $.info(`[${proxy.name}] 设置成功缓存`)
+                    $.info(`[${proxy.name}] 设置${ippureFailed ? '失败' : '成功'}缓存`)
                     cache.set(id, result)
                 }
             } else {
@@ -312,6 +329,7 @@ async function operator(proxies = [], targetPlatform, context) {
             proxies[index]._node_info = info
             proxies[index]._ippure = info
         }
+        proxies[index]._check_failed = result.failed === true
         proxies[index]._udp = result.udp === true
     }
 
@@ -350,7 +368,7 @@ async function operator(proxies = [], targetPlatform, context) {
                 if (removeIncompatible && proxy._incompatible) {
                     return false
                 }
-                if (removeFailed && !proxy._node_info) {
+                if (removeFailed && (!proxy._node_info || proxy._check_failed)) {
                     return !removeIncompatible && proxy._incompatible
                 }
                 return true
@@ -363,6 +381,7 @@ async function operator(proxies = [], targetPlatform, context) {
                 delete proxy._ippure
                 delete proxy._udp
             }
+            delete proxy._check_failed
             if (!keepIncompatible) {
                 delete proxy._incompatible
             }
@@ -377,7 +396,9 @@ function formatProxyName(proxy = {}) {
     }
 
     const info = proxy._node_info
-    const parts = [getPurityLabel(info), pickResidentialIcon(info.isResidential), pickBroadcastIcon(info.isBroadcast)]
+    const parts = proxy._check_failed
+        ? []
+        : [getPurityLabel(info), pickResidentialIcon(info.isResidential), pickBroadcastIcon(info.isBroadcast)]
     const multiplier = findMultiplier(getOriginalName(proxy)) || (hasOriginalName(proxy) ? '' : findMultiplier(proxy.name))
     const flag = getFlag(info.countryCode || info.country || info.country_code)
     const organization = getOrganization(info)
@@ -389,7 +410,8 @@ function formatProxyName(proxy = {}) {
         parts.push(`x${multiplier}`)
     }
 
-    proxy.name = `[${parts.join('|')}] ${[flag, organization || 'Unknown'].filter(Boolean).join(' ')}`
+    const tag = parts.length ? `[${parts.join('|')}] ` : ''
+    proxy.name = `${tag}${[flag, organization || 'Unknown'].filter(Boolean).join(' ')}`
     return proxy
 }
 
@@ -433,6 +455,14 @@ function isCacheComplete(cached = {}, udpEnabled) {
 
 function isValidNodeInfo(info) {
     return info && typeof info === 'object' && Boolean(info.ip || info.countryCode || info.country || info.asOrganization)
+}
+
+function isValidIPPureInfo(info) {
+    return isValidNodeInfo(info) && (
+        hasFraudScore(info) ||
+        Object.prototype.hasOwnProperty.call(info, 'isResidential') ||
+        Object.prototype.hasOwnProperty.call(info, 'isBroadcast')
+    )
 }
 
 function hasFraudScore(info = {}) {
@@ -626,6 +656,14 @@ function isIPv6(value = '') {
     return String(value || '').includes(':')
 }
 
+function getNodeIp(proxy = {}) {
+    const server = String(proxy.server || '').trim().replace(/^\[|\]$/g, '')
+    if (isIPv6(server) || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(server)) {
+        return server
+    }
+    return ''
+}
+
 function normalizeText(value = '') {
     return String(value)
         .replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
@@ -646,7 +684,7 @@ function lodashGet(source, path, defaultValue = undefined) {
 }
 
 function getCacheId({ proxy = {}, url, udpEnabled, ntp, frontProxyUrl }) {
-    return `http-meta:node-info:v3:${url}:${udpEnabled}:${ntp}:${frontProxyUrl || ''}:${JSON.stringify(
+    return `http-meta:node-info:v5:${url}:${udpEnabled}:${ntp}:${frontProxyUrl || ''}:${JSON.stringify(
         Object.fromEntries(Object.entries(proxy).filter(([key]) => !/^(name|collectionName|subName|id|_.*)$/i.test(key)))
     )}`
 }
