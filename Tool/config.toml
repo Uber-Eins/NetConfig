@@ -12,9 +12,11 @@ concurrent_downloads = 16
 # 格式: [categories.分类名]
 #       geosite = "CN"                      # 可选
 #       geosite_db = "https://.../geosite.dat"  # geosite 配套数据库
+#       mem_optimise = true                  # 可选，将 DOMAIN/DOMAIN-SUFFIX 输出为 MRS
 #       urls = ["url1", "url2", ...]
 
 [categories.REJECT]
+mem_optimise = true
 urls = [
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Surge/Advertising/Advertising_All.list",
     "https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-surge.txt",
@@ -35,6 +37,7 @@ urls = [
 ]
 
 [categories.CN]
+mem_optimise = true
 geosite = "CN"
 geosite_db = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
 urls = [

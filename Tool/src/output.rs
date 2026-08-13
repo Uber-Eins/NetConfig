@@ -1,4 +1,4 @@
-use crate::AppResult;
+use crate::{AppResult, mrs};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,6 +7,7 @@ pub(crate) fn export_results(
     temp_dir: &Path,
     output_dir: &Path,
     yaml_skipped_categories: &BTreeSet<String>,
+    mem_optimised_categories: &BTreeSet<String>,
 ) -> AppResult<()> {
     println!("\n===== 移动输出文件 =====");
     fs::create_dir_all(output_dir)
@@ -22,8 +23,12 @@ pub(crate) fn export_results(
         move_rule_file(&source_path, &destination)?;
     }
 
-    println!("\n===== 生成 Clash YAML =====");
-    generate_clash_yaml_files(output_dir, yaml_skipped_categories)
+    println!("\n===== 生成 Clash 规则集 =====");
+    generate_clash_files(
+        output_dir,
+        yaml_skipped_categories,
+        mem_optimised_categories,
+    )
 }
 
 fn list_rule_files(dir: &Path) -> AppResult<Vec<PathBuf>> {
@@ -74,9 +79,10 @@ fn move_rule_file(source_path: &Path, destination: &Path) -> AppResult<()> {
     }
 }
 
-fn generate_clash_yaml_files(
+fn generate_clash_files(
     output_dir: &Path,
     yaml_skipped_categories: &BTreeSet<String>,
+    mem_optimised_categories: &BTreeSet<String>,
 ) -> AppResult<()> {
     let clash_dir = output_dir.join("Clash");
     fs::create_dir_all(&clash_dir)
@@ -94,7 +100,12 @@ fn generate_clash_yaml_files(
         }
 
         let yaml_path = clash_dir.join(format!("{category}.yaml"));
-        write_clash_yaml(&list_path, &yaml_path)?;
+        if mem_optimised_categories.contains(category.as_ref()) {
+            let mrs_path = clash_dir.join(format!("{category}.mrs"));
+            write_mem_optimised_clash_files(&list_path, &yaml_path, &mrs_path)?;
+        } else {
+            write_clash_yaml(&list_path, &yaml_path)?;
+        }
     }
 
     Ok(())
@@ -114,6 +125,69 @@ fn write_clash_yaml(list_path: &Path, yaml_path: &Path) -> AppResult<()> {
     Ok(())
 }
 
+fn write_mem_optimised_clash_files(
+    list_path: &Path,
+    yaml_path: &Path,
+    mrs_path: &Path,
+) -> AppResult<()> {
+    let content = fs::read_to_string(list_path)
+        .map_err(|error| format!("读取规则文件失败 {:?}: {}", list_path, error))?;
+    let split = split_mem_optimised_rules(&content);
+
+    mrs::write_domain_rules(&split.domain_rules, mrs_path)?;
+    println!(
+        "已生成: {} ({} 条域名规则)",
+        mrs_path.display(),
+        split.domain_rules.len()
+    );
+
+    let (output, rule_count) = build_yaml_from_rules(&split.classical_rules);
+    fs::write(yaml_path, output)
+        .map_err(|error| format!("写入 YAML 失败 {:?}: {}", yaml_path, error))?;
+    println!(
+        "已生成: {} ({} 条非域名规则)",
+        yaml_path.display(),
+        rule_count
+    );
+
+    Ok(())
+}
+
+struct SplitRules {
+    domain_rules: Vec<String>,
+    classical_rules: Vec<String>,
+}
+
+fn split_mem_optimised_rules(content: &str) -> SplitRules {
+    let mut domain_rules = Vec::new();
+    let mut classical_rules = Vec::new();
+
+    for line in content.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let Some((rule_type, rest)) = line.split_once(',') else {
+            classical_rules.push(line.to_string());
+            continue;
+        };
+        let value = rest.split(',').next().unwrap_or_default().trim();
+
+        if rule_type.trim().eq_ignore_ascii_case("DOMAIN") {
+            domain_rules.push(value.to_string());
+        } else if rule_type.trim().eq_ignore_ascii_case("DOMAIN-SUFFIX") {
+            domain_rules.push(format!("+.{value}"));
+        } else {
+            classical_rules.push(line.to_string());
+        }
+    }
+
+    SplitRules {
+        domain_rules,
+        classical_rules,
+    }
+}
+
 fn build_yaml_payload(content: &str) -> (String, usize) {
     let payload: Vec<&str> = content
         .lines()
@@ -121,11 +195,15 @@ fn build_yaml_payload(content: &str) -> (String, usize) {
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .collect();
 
+    build_yaml_from_rules(&payload)
+}
+
+fn build_yaml_from_rules<T: AsRef<str>>(payload: &[T]) -> (String, usize) {
     let mut output = String::with_capacity(payload.len() * 40 + 16);
     output.push_str("payload:\n");
-    for rule in &payload {
+    for rule in payload {
         output.push_str("  - ");
-        output.push_str(&yaml_quote(rule));
+        output.push_str(&yaml_quote(rule.as_ref()));
         output.push('\n');
     }
 

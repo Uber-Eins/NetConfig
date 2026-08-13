@@ -27,6 +27,7 @@ pub async fn run() -> AppResult<()> {
             &config.temp_dir,
             output_dir,
             &config.yaml_skipped_categories(),
+            &config.mem_optimised_categories(),
         )?;
     }
 
@@ -47,17 +48,28 @@ fn print_config_summary(config: &Config) {
     println!("临时目录: {}", config.temp_dir.display());
     println!("分类数量: {}", config.categories.len());
     for (name, category) in &config.categories {
+        let memory_optimisation = if category.mem_optimise {
+            ", mem_optimise=true"
+        } else {
+            ""
+        };
         match category.geosite.as_deref() {
             Some(geosite) => {
                 println!(
-                    "  - {}: {} 个URL, geosite={}",
+                    "  - {}: {} 个URL, geosite={}{}",
                     name,
                     category.urls.len(),
-                    geosite
+                    geosite,
+                    memory_optimisation
                 );
             }
             None => {
-                println!("  - {}: {} 个URL", name, category.urls.len());
+                println!(
+                    "  - {}: {} 个URL{}",
+                    name,
+                    category.urls.len(),
+                    memory_optimisation
+                );
             }
         }
     }

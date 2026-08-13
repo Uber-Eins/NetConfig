@@ -20,6 +20,8 @@ pub(crate) struct Category {
     pub(crate) urls: Vec<String>,
     pub(crate) geosite: Option<String>,
     pub(crate) geosite_db: Option<String>,
+    #[serde(default)]
+    pub(crate) mem_optimise: bool,
 }
 
 impl Config {
@@ -43,6 +45,14 @@ impl Config {
         self.categories
             .iter()
             .filter(|(_, category)| category.uses_geosite())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    pub(crate) fn mem_optimised_categories(&self) -> BTreeSet<String> {
+        self.categories
+            .iter()
+            .filter(|(_, category)| category.mem_optimise)
             .map(|(name, _)| name.clone())
             .collect()
     }
@@ -78,6 +88,16 @@ impl Config {
 impl Category {
     pub(crate) fn uses_geosite(&self) -> bool {
         self.geosite.is_some()
+    }
+}
+
+#[cfg(test)]
+impl Config {
+    fn load_from_str(content: &str) -> AppResult<Self> {
+        let config: Self =
+            toml::from_str(content).map_err(|error| format!("解析配置文件失败: {}", error))?;
+        config.validate()?;
+        Ok(config)
     }
 }
 
@@ -168,15 +188,5 @@ urls = ["https://example.com/block.list"]
         let skipped = config.yaml_skipped_categories();
         assert!(skipped.contains("CN"));
         assert!(!skipped.contains("Block"));
-    }
-}
-
-#[cfg(test)]
-impl Config {
-    fn load_from_str(content: &str) -> AppResult<Self> {
-        let config: Self =
-            toml::from_str(content).map_err(|error| format!("解析配置文件失败: {}", error))?;
-        config.validate()?;
-        Ok(config)
     }
 }
