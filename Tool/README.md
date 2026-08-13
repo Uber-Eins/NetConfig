@@ -19,8 +19,8 @@ Seshat 是一个使用 Rust 编写的规则去重工具。
 - 忽略空行和以 `#` 开头的注释行
 - 对无法识别的规则行按原样保留
 - 如果配置了 `output_dir`，会把结果导出到目标目录，并额外生成对应的 YAML 文件
-- 分类可启用 `mem_optimise`，将 `DOMAIN` / `DOMAIN-SUFFIX` 拆分为 Mihomo MRS 域名规则集
-- 如果分类使用了 `geosite`，则该分类不会生成 YAML 文件
+- 分类可启用 `mem_optimise`，将域名规则与 IP-CIDR 规则分别拆分为 Mihomo MRS 规则集
+- `geosite` 提取出的规则与 URL 规则使用相同的 Clash/Mihomo 输出流程
 
 # 用法说明
 
@@ -58,7 +58,7 @@ urls = [
 - `categories.<name>.urls`：分类下的规则源列表
 - `categories.<name>.geosite`：可选，指定要展开的 geosite 名称，支持 `name@attr`
 - `categories.<name>.geosite_db`：可选，`geosite.dat` 下载地址；配置了 `geosite` 时必须提供
-- `categories.<name>.mem_optimise`：可选布尔值，默认 `false`。启用后将 `DOMAIN` 与 `DOMAIN-SUFFIX` 规则写入 `Clash/<name>.mrs`，其余规则写入 `Clash/<name>.yaml`
+- `categories.<name>.mem_optimise`：可选布尔值，默认 `false`。启用后分别生成 domain、ipcidr MRS，并将其余规则写入 `Clash/<name>.yaml`
 
 注意：`categories` 下只保留 `urls`，不要再写 `type` 字段。
 
@@ -85,8 +85,8 @@ cargo run --release -- ./config.toml
 - 去重后的 `.list` 文件会被导出到 `output_dir`
 - Clash 文件会生成到 `output_dir/Clash` 中
 - 普通分类生成 `分类名.yaml`
-- `mem_optimise = true` 的分类同时生成 `分类名.mrs`（用于 `behavior: domain`、`format: mrs`）和不含 `DOMAIN` / `DOMAIN-SUFFIX` 的 `分类名.yaml`
-- 如果某个分类配置了 `geosite`，该分类只输出 `.list`，不会生成 YAML
+- `mem_optimise = true` 的分类按实际存在的规则生成 `分类名-domain.mrs`（`behavior: domain`）和 `分类名-ipcidr.mrs`（`behavior: ipcidr`），并始终生成 `分类名.yaml`；MRS 使用 `format: mrs`，YAML 不再包含 `DOMAIN`、`DOMAIN-SUFFIX`、`IP-CIDR`、`IP-CIDR6`
+- 配置了 `geosite` 的分类也会生成上述 Clash/Mihomo 文件；geosite 与该分类的 URL 规则先合并去重，再统一输出
 
 ## 4. 输入格式要求
 

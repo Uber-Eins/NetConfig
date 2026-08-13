@@ -12,7 +12,7 @@ concurrent_downloads = 20
 # 格式: [categories.分类名]
 #       geosite = "CN"                      # 可选
 #       geosite_db = "https://.../geosite.dat"  # geosite 配套数据库
-#       mem_optimise = true                  # 可选，将 DOMAIN/DOMAIN-SUFFIX 输出为 MRS
+#       mem_optimise = true                  # 可选，分别输出 domain/ipcidr MRS
 #       urls = ["url1", "url2", ...]
 
 [categories.CN]

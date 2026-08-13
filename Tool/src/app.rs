@@ -26,7 +26,6 @@ pub async fn run() -> AppResult<()> {
         output::export_results(
             &config.temp_dir,
             output_dir,
-            &config.yaml_skipped_categories(),
             &config.mem_optimised_categories(),
         )?;
     }

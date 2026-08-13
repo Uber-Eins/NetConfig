@@ -41,14 +41,6 @@ impl Config {
         self.concurrent_downloads.unwrap_or(10)
     }
 
-    pub(crate) fn yaml_skipped_categories(&self) -> BTreeSet<String> {
-        self.categories
-            .iter()
-            .filter(|(_, category)| category.uses_geosite())
-            .map(|(name, _)| name.clone())
-            .collect()
-    }
-
     pub(crate) fn mem_optimised_categories(&self) -> BTreeSet<String> {
         self.categories
             .iter()
@@ -82,12 +74,6 @@ impl Config {
         }
 
         Ok(())
-    }
-}
-
-impl Category {
-    pub(crate) fn uses_geosite(&self) -> bool {
-        self.geosite.is_some()
     }
 }
 
@@ -167,26 +153,5 @@ geosite = "CN"
         .unwrap_err();
 
         assert!(error.contains("geosite_db"));
-    }
-
-    #[test]
-    fn config_marks_geosite_categories_for_yaml_skip() {
-        let config = Config::load_from_str(
-            r#"
-temp_dir = "/tmp/rules"
-
-[categories.CN]
-geosite = "CN"
-geosite_db = "https://example.com/geosite.dat"
-
-[categories.Block]
-urls = ["https://example.com/block.list"]
-"#,
-        )
-        .unwrap();
-
-        let skipped = config.yaml_skipped_categories();
-        assert!(skipped.contains("CN"));
-        assert!(!skipped.contains("Block"));
     }
 }

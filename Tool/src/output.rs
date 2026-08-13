@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 pub(crate) fn export_results(
     temp_dir: &Path,
     output_dir: &Path,
-    yaml_skipped_categories: &BTreeSet<String>,
     mem_optimised_categories: &BTreeSet<String>,
 ) -> AppResult<()> {
     println!("\n===== 移动输出文件 =====");
@@ -24,11 +23,7 @@ pub(crate) fn export_results(
     }
 
     println!("\n===== 生成 Clash 规则集 =====");
-    generate_clash_files(
-        output_dir,
-        yaml_skipped_categories,
-        mem_optimised_categories,
-    )
+    generate_clash_files(output_dir, mem_optimised_categories)
 }
 
 fn list_rule_files(dir: &Path) -> AppResult<Vec<PathBuf>> {
@@ -81,7 +76,6 @@ fn move_rule_file(source_path: &Path, destination: &Path) -> AppResult<()> {
 
 fn generate_clash_files(
     output_dir: &Path,
-    yaml_skipped_categories: &BTreeSet<String>,
     mem_optimised_categories: &BTreeSet<String>,
 ) -> AppResult<()> {
     let clash_dir = output_dir.join("Clash");
@@ -94,15 +88,19 @@ fn generate_clash_files(
             continue;
         };
         let category = stem.to_string_lossy();
-        if yaml_skipped_categories.contains(category.as_ref()) {
-            println!("跳过 YAML: {} 使用 geosite 数据源", category);
-            continue;
-        }
 
         let yaml_path = clash_dir.join(format!("{category}.yaml"));
         if mem_optimised_categories.contains(category.as_ref()) {
-            let mrs_path = clash_dir.join(format!("{category}.mrs"));
-            write_mem_optimised_clash_files(&list_path, &yaml_path, &mrs_path)?;
+            let domain_mrs_path = clash_dir.join(format!("{category}-domain.mrs"));
+            let ipcidr_mrs_path = clash_dir.join(format!("{category}-ipcidr.mrs"));
+            let legacy_mrs_path = clash_dir.join(format!("{category}.mrs"));
+            write_mem_optimised_clash_files(
+                &list_path,
+                &yaml_path,
+                &domain_mrs_path,
+                &ipcidr_mrs_path,
+            )?;
+            remove_generated_file_if_exists(&legacy_mrs_path)?;
         } else {
             write_clash_yaml(&list_path, &yaml_path)?;
         }
@@ -128,24 +126,40 @@ fn write_clash_yaml(list_path: &Path, yaml_path: &Path) -> AppResult<()> {
 fn write_mem_optimised_clash_files(
     list_path: &Path,
     yaml_path: &Path,
-    mrs_path: &Path,
+    domain_mrs_path: &Path,
+    ipcidr_mrs_path: &Path,
 ) -> AppResult<()> {
     let content = fs::read_to_string(list_path)
         .map_err(|error| format!("读取规则文件失败 {:?}: {}", list_path, error))?;
     let split = split_mem_optimised_rules(&content);
 
-    mrs::write_domain_rules(&split.domain_rules, mrs_path)?;
-    println!(
-        "已生成: {} ({} 条域名规则)",
-        mrs_path.display(),
-        split.domain_rules.len()
-    );
+    if split.domain_rules.is_empty() {
+        remove_generated_file_if_exists(domain_mrs_path)?;
+    } else {
+        mrs::write_domain_rules(&split.domain_rules, domain_mrs_path)?;
+        println!(
+            "已生成: {} ({} 条域名规则)",
+            domain_mrs_path.display(),
+            split.domain_rules.len()
+        );
+    }
+
+    if split.ipcidr_rules.is_empty() {
+        remove_generated_file_if_exists(ipcidr_mrs_path)?;
+    } else {
+        mrs::write_ipcidr_rules(&split.ipcidr_rules, ipcidr_mrs_path)?;
+        println!(
+            "已生成: {} ({} 条 IP-CIDR 规则)",
+            ipcidr_mrs_path.display(),
+            split.ipcidr_rules.len()
+        );
+    }
 
     let (output, rule_count) = build_yaml_from_rules(&split.classical_rules);
     fs::write(yaml_path, output)
         .map_err(|error| format!("写入 YAML 失败 {:?}: {}", yaml_path, error))?;
     println!(
-        "已生成: {} ({} 条非域名规则)",
+        "已生成: {} ({} 条其余规则)",
         yaml_path.display(),
         rule_count
     );
@@ -153,13 +167,26 @@ fn write_mem_optimised_clash_files(
     Ok(())
 }
 
+fn remove_generated_file_if_exists(path: &Path) -> AppResult<()> {
+    match fs::remove_file(path) {
+        Ok(()) => {
+            println!("已移除过期输出: {}", path.display());
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("删除旧输出失败 {:?}: {}", path, error)),
+    }
+}
+
 struct SplitRules {
     domain_rules: Vec<String>,
+    ipcidr_rules: Vec<String>,
     classical_rules: Vec<String>,
 }
 
 fn split_mem_optimised_rules(content: &str) -> SplitRules {
     let mut domain_rules = Vec::new();
+    let mut ipcidr_rules = Vec::new();
     let mut classical_rules = Vec::new();
 
     for line in content.lines().map(str::trim) {
@@ -177,6 +204,10 @@ fn split_mem_optimised_rules(content: &str) -> SplitRules {
             domain_rules.push(value.to_string());
         } else if rule_type.trim().eq_ignore_ascii_case("DOMAIN-SUFFIX") {
             domain_rules.push(format!("+.{value}"));
+        } else if rule_type.trim().eq_ignore_ascii_case("IP-CIDR")
+            || rule_type.trim().eq_ignore_ascii_case("IP-CIDR6")
+        {
+            ipcidr_rules.push(value.to_string());
         } else {
             classical_rules.push(line.to_string());
         }
@@ -184,6 +215,7 @@ fn split_mem_optimised_rules(content: &str) -> SplitRules {
 
     SplitRules {
         domain_rules,
+        ipcidr_rules,
         classical_rules,
     }
 }
@@ -217,8 +249,6 @@ fn yaml_quote(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use super::{build_yaml_payload, yaml_quote};
 
     #[test]
@@ -241,12 +271,5 @@ DOMAIN-REGEX,^ad[sx]?\.
     #[test]
     fn yaml_quote_escapes_single_quotes() {
         assert_eq!(yaml_quote("DOMAIN,foo'bar.com"), "'DOMAIN,foo''bar.com'");
-    }
-
-    #[test]
-    fn yaml_skip_set_contains_geosite_categories() {
-        let skipped = BTreeSet::from([String::from("CN")]);
-        assert!(skipped.contains("CN"));
-        assert!(!skipped.contains("Block"));
     }
 }
