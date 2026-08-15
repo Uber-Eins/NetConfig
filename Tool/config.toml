@@ -44,4 +44,5 @@ geosite = "CN"
 geosite_db = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
 urls = [
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Surge/ChinaMaxNoIP/ChinaMaxNoIP_All.list",
+    "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/China-ASN.list",
 ]
