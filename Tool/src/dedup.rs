@@ -254,8 +254,25 @@ fn scan_rule_files(base_path: &Path) -> Vec<RuleFile> {
         .collect()
 }
 
-/// 主去重逻辑
+/// 按分类隔离后执行去重，避免一个分类中的宽泛规则删除另一个分类的规则。
 fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
+    let mut rules_by_category: BTreeMap<String, Vec<Rule>> = BTreeMap::new();
+
+    for rule in rules {
+        rules_by_category
+            .entry(rule.category.clone())
+            .or_default()
+            .push(rule);
+    }
+
+    rules_by_category
+        .into_values()
+        .flat_map(deduplicate_category_rules)
+        .collect()
+}
+
+/// 单个分类内的去重逻辑
+fn deduplicate_category_rules(rules: Vec<Rule>) -> Vec<Rule> {
     let total_rules = rules.len();
 
     // 第一步：收集所有规则
