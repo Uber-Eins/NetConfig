@@ -26,7 +26,7 @@ urls = [
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/BlockHttpDNS/BlockHttpDNS.list",
     "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/HTTPDNS.list",
     "https://raw.githubusercontent.com/app2smile/rules/master/rule/tieba-ad.list",
-    "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/REJECT.list"
+    "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/REJECT.list",
 ]
 
 [categories.LLM]
