@@ -2,6 +2,7 @@ use crate::AppResult;
 use crate::config::Config;
 use crate::geosite;
 use futures::stream::{self, StreamExt};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -81,8 +82,11 @@ pub(crate) async fn download_all_rules(config: &Config) -> AppResult<()> {
 
     println!("\n下载完成: {} 成功, {} 失败", success, failed);
 
-    if failed > 0 && success == 0 {
-        return Err("所有下载都失败了".to_string());
+    if failed > 0 {
+        return Err(format!(
+            "{} 个规则源处理失败，已中止生成产物（{} 个成功）",
+            failed, success
+        ));
     }
 
     Ok(())
@@ -142,17 +146,26 @@ async fn download_geosite_databases(
 
 fn collect_download_tasks(config: &Config) -> AppResult<Vec<DownloadTask>> {
     let mut tasks = Vec::new();
+    let mut planned_paths = BTreeMap::<PathBuf, String>::new();
 
     for (category_name, category) in &config.categories {
         let category_dir = config.temp_dir.join(category_name);
         fs::create_dir_all(&category_dir)
             .map_err(|error| format!("创建目录失败 {:?}: {}", category_dir, error))?;
 
-        for (index, url) in category.urls.iter().enumerate() {
+        for url in &category.urls {
+            let save_path = category_dir.join(build_filename(url));
+            if let Some(existing_url) = planned_paths.insert(save_path.clone(), url.clone()) {
+                return Err(format!(
+                    "规则源文件名冲突: {} 与 {} 都会写入 {:?}",
+                    existing_url, url, save_path
+                ));
+            }
+
             tasks.push(DownloadTask {
                 category: category_name.clone(),
                 url: url.clone(),
-                save_path: category_dir.join(build_filename(url, index)),
+                save_path,
             });
         }
     }
@@ -220,12 +233,8 @@ async fn download_bytes(client: &reqwest::Client, url: &str) -> AppResult<Vec<u8
         .map_err(|error| format!("读取响应失败 {}: {}", url, error))
 }
 
-fn build_filename(url: &str, index: usize) -> String {
-    url.rsplit('/')
-        .next()
-        .filter(|segment| !segment.is_empty() && segment.contains('.'))
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("list_{index}.txt"))
+fn build_filename(url: &str) -> String {
+    format!("{:x}", Sha256::digest(url.as_bytes()))
 }
 
 fn sanitize_filename(value: &str) -> String {
@@ -240,23 +249,7 @@ fn sanitize_filename(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_filename, sanitize_filename};
-
-    #[test]
-    fn build_filename_prefers_url_tail() {
-        assert_eq!(
-            build_filename("https://example.com/path/rules.list", 0),
-            "rules.list"
-        );
-    }
-
-    #[test]
-    fn build_filename_falls_back_to_index() {
-        assert_eq!(
-            build_filename("https://example.com/download", 2),
-            "list_2.txt"
-        );
-    }
+    use super::sanitize_filename;
 
     #[test]
     fn sanitize_filename_replaces_non_safe_characters() {

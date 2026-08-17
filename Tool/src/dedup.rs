@@ -215,43 +215,56 @@ fn parse_ruleset_line(line: &str, category: &str) -> Option<Rule> {
 }
 
 /// 读取单个文件的所有规则
-fn read_rules_from_file(file_path: &Path, category: &str) -> Vec<Rule> {
-    let file = match File::open(file_path) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("无法打开文件 {:?}: {}", file_path, e);
-            return Vec::new();
-        }
-    };
+fn read_rules_from_file(file_path: &Path, category: &str) -> Result<Vec<Rule>, String> {
+    let file = File::open(file_path)
+        .map_err(|error| format!("无法打开规则文件 {:?}: {}", file_path, error))?;
 
     let reader = BufReader::with_capacity(1024 * 1024, file); // 1MB buffer
+    let mut rules = Vec::new();
 
-    reader
-        .lines()
-        .map_while(Result::ok)
-        .filter_map(|line| parse_rule(&line, category))
-        .collect()
+    for (index, line) in reader.lines().enumerate() {
+        let line = line.map_err(|error| {
+            format!(
+                "读取规则文件 {:?} 第 {} 行失败: {}",
+                file_path,
+                index + 1,
+                error
+            )
+        })?;
+        if let Some(rule) = parse_rule(&line, category) {
+            rules.push(rule);
+        }
+    }
+
+    Ok(rules)
 }
 
 /// 扫描目录获取所有规则文件
-fn scan_rule_files(base_path: &Path) -> Vec<RuleFile> {
-    WalkDir::new(base_path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter_map(|e| {
-            // 从路径中提取分类：SPATH/{分类}/file
-            let path = e.path().to_path_buf();
-            let relative = path.strip_prefix(base_path).ok()?;
-            let category = relative
-                .components()
-                .next()?
-                .as_os_str()
-                .to_string_lossy()
-                .to_string();
-            Some(RuleFile { path, category })
-        })
-        .collect()
+fn scan_rule_files(base_path: &Path) -> Result<Vec<RuleFile>, String> {
+    let mut files = Vec::new();
+
+    for entry in WalkDir::new(base_path) {
+        let entry = entry.map_err(|error| format!("扫描规则目录失败: {}", error))?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        // 从路径中提取分类：SPATH/{分类}/file
+        let path = entry.path().to_path_buf();
+        let relative = path
+            .strip_prefix(base_path)
+            .map_err(|error| format!("无法解析规则文件路径 {:?}: {}", path, error))?;
+        let category = relative
+            .components()
+            .next()
+            .ok_or_else(|| format!("规则文件缺少分类目录: {:?}", path))?
+            .as_os_str()
+            .to_string_lossy()
+            .to_string();
+        files.push(RuleFile { path, category });
+    }
+
+    Ok(files)
 }
 
 /// 按分类隔离后执行去重，避免一个分类中的宽泛规则删除另一个分类的规则。
@@ -474,15 +487,16 @@ pub fn run(base_path: &Path) -> Result<(), String> {
     println!("扫描规则文件: {}", base_path.display());
 
     // 扫描所有规则文件
-    let files = scan_rule_files(base_path);
+    let files = scan_rule_files(base_path)?;
     println!("找到 {} 个规则文件", files.len());
 
     // 并行读取所有规则
     println!("读取规则中...");
-    let all_rules: Vec<Rule> = files
+    let rule_batches: Result<Vec<Vec<Rule>>, String> = files
         .par_iter()
-        .flat_map(|file| read_rules_from_file(&file.path, &file.category))
+        .map(|file| read_rules_from_file(&file.path, &file.category))
         .collect();
+    let all_rules = rule_batches?.into_iter().flatten().collect::<Vec<_>>();
 
     let total_rules = all_rules.len();
     println!("共读取 {} 条规则", total_rules);

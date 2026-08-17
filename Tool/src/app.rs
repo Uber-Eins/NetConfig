@@ -78,9 +78,8 @@ fn print_config_summary(config: &Config) {
 fn prepare_temp_dir(temp_dir: &Path) -> AppResult<()> {
     if temp_dir.exists() {
         println!("清理临时目录...");
-        if let Err(error) = fs::remove_dir_all(temp_dir) {
-            eprintln!("警告: 清理临时目录失败: {}", error);
-        }
+        fs::remove_dir_all(temp_dir)
+            .map_err(|error| format!("清理临时目录失败 {:?}: {}", temp_dir, error))?;
     }
 
     fs::create_dir_all(temp_dir)

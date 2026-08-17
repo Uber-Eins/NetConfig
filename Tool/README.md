@@ -52,15 +52,16 @@ urls = [
 
 配置说明：
 
-- `temp_dir`：下载文件和处理中间结果的目录
+- `temp_dir`：下载文件和处理中间结果的目录。必须使用绝对路径，每次运行前会清空
 - `output_dir`：可选，最终输出目录
-- `concurrent_downloads`：可选，并发下载数，默认 `10`
+- `concurrent_downloads`：可选，并发下载数，默认 `10`，必须大于 `0`
 - `categories.<name>.urls`：分类下的规则源列表
 - `categories.<name>.geosite`：可选，指定要展开的 geosite 名称，支持 `name@attr`
 - `categories.<name>.geosite_db`：可选，`geosite.dat` 下载地址；配置了 `geosite` 时必须提供
 - `categories.<name>.mem_optimise`：可选布尔值，默认 `false`。启用后分别生成 domain、ipcidr MRS，并将其余规则写入 `Clash/<name>.yaml`
 
 注意：`categories` 下只保留 `urls`，不要再写 `type` 字段。
+任一 URL 或 geosite 来源处理失败时，本次运行会中止，不会发布不完整产物。
 
 ## 2. 运行程序
 
@@ -83,6 +84,7 @@ cargo run --release -- ./config.toml
 如果设置了 `output_dir`：
 
 - 去重后的 `.list` 文件会被导出到 `output_dir`
+- 所有新产物会先在暂存目录完整生成，再统一替换对应的旧产物；不属于本次分类的旧文件不会自动删除
 - Clash 文件会生成到 `output_dir/Clash` 中
 - 普通分类生成 `分类名.yaml`
 - `mem_optimise = true` 的分类按实际存在的规则生成 `分类名-domain.mrs`（`behavior: domain`）和 `分类名-ipcidr.mrs`（`behavior: ipcidr`），并始终生成 `分类名.yaml`；MRS 使用 `format: mrs`，YAML 不再包含 `DOMAIN`、`DOMAIN-SUFFIX`、`IP-CIDR`、`IP-CIDR6`
