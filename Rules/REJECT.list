@@ -5378,7 +5378,6 @@ DOMAIN,i-media.co.nz
 DOMAIN,i.bestcontentfare.top
 DOMAIN,i.bimbolive.com
 DOMAIN,i.rdldtrk.com
-DOMAIN,i.snssdk.com
 DOMAIN,i000o.com
 DOMAIN,i0e6asb0fj5y.www.emanualonline.com
 DOMAIN,i0s26ol9.com
@@ -9816,6 +9815,7 @@ DOMAIN,senhelhgsoov.com
 DOMAIN,seniorbaniaasth.info
 DOMAIN,seniorliving.aberdeenridge.pmma.org
 DOMAIN,sentrol.cl
+DOMAIN,sentry.dev-my.games
 DOMAIN,sentry.justwatch.com
 DOMAIN,seoaelrfdy.com
 DOMAIN,seoholding.com
@@ -25903,6 +25903,7 @@ DOMAIN-SUFFIX,ads.xtramsn.co.nz
 DOMAIN-SUFFIX,ads.xxxad.net
 DOMAIN-SUFFIX,ads.yahoo.com
 DOMAIN-SUFFIX,ads.yam.com
+DOMAIN-SUFFIX,ads.yandex
 DOMAIN-SUFFIX,ads.yandex.com
 DOMAIN-SUFFIX,ads.yandex.ru
 DOMAIN-SUFFIX,ads.yango.com
@@ -81809,7 +81810,6 @@ DOMAIN-SUFFIX,featured.bradyid.com
 DOMAIN-SUFFIX,featured.perfectionholic.com
 DOMAIN-SUFFIX,featured.premiermedia.net
 DOMAIN-SUFFIX,featuregangster.com
-DOMAIN-SUFFIX,featuregates.org
 DOMAIN-SUFFIX,featurelink.com
 DOMAIN-SUFFIX,featurelockout.com
 DOMAIN-SUFFIX,featureslounge.com
@@ -92284,6 +92284,7 @@ DOMAIN-SUFFIX,google-pagerank.net
 DOMAIN-SUFFIX,google-shopping-v2.sapoapps.vn
 DOMAIN-SUFFIX,google-shopping.sapoapps.vn
 DOMAIN-SUFFIX,googleadapis.com
+DOMAIN-SUFFIX,googleadapis.l.google.com
 DOMAIN-SUFFIX,googleailesi.com
 DOMAIN-SUFFIX,googleanalysis.mobi
 DOMAIN-SUFFIX,googleapi.club
@@ -93172,7 +93173,6 @@ DOMAIN-SUFFIX,gridnovablock.com
 DOMAIN-SUFFIX,gridoffers.com
 DOMAIN-SUFFIX,gridrelay27.co
 DOMAIN-SUFFIX,gridriwe.xyz
-DOMAIN-SUFFIX,gridsum.com
 DOMAIN-SUFFIX,gridsumdissector.com
 DOMAIN-SUFFIX,griefcube.cc
 DOMAIN-SUFFIX,griefsdopster.qpon
@@ -102877,7 +102877,6 @@ DOMAIN-SUFFIX,hscvk.tnuck.com
 DOMAIN-SUFFIX,hsdbu.immocenterwitte.de
 DOMAIN-SUFFIX,hsdn.org
 DOMAIN-SUFFIX,hsdps.cc
-DOMAIN-SUFFIX,hseda.com
 DOMAIN-SUFFIX,hsfbpp.xyz
 DOMAIN-SUFFIX,hsfcuorcijlne.website
 DOMAIN-SUFFIX,hsfefxyzfztdt.space
@@ -104063,6 +104062,7 @@ DOMAIN-SUFFIX,i.sandbox.love
 DOMAIN-SUFFIX,i.scriptovore.com
 DOMAIN-SUFFIX,i.seznam.cz
 DOMAIN-SUFFIX,i.shelf.im
+DOMAIN-SUFFIX,i.snssdk.com
 DOMAIN-SUFFIX,i.spyn.co
 DOMAIN-SUFFIX,i.syasn.com
 DOMAIN-SUFFIX,i.tct-rom.com
@@ -118380,6 +118380,7 @@ DOMAIN-SUFFIX,kurkizraka.com
 DOMAIN-SUFFIX,kurlikburlik.com
 DOMAIN-SUFFIX,kurlipush.com
 DOMAIN-SUFFIX,kurma.koisuper2.store
+DOMAIN-SUFFIX,kurogames-ads.com
 DOMAIN-SUFFIX,kurrhlwywpswg.site
 DOMAIN-SUFFIX,kursatarak.com
 DOMAIN-SUFFIX,kurtzaat.com
@@ -180860,6 +180861,7 @@ DOMAIN-SUFFIX,sentry.alibaba.ir
 DOMAIN-SUFFIX,sentry.bale.sh
 DOMAIN-SUFFIX,sentry.basalam.com
 DOMAIN-SUFFIX,sentry.cafebazaar.org
+DOMAIN-SUFFIX,sentry.dev
 DOMAIN-SUFFIX,sentry.dev-my.com
 DOMAIN-SUFFIX,sentry.divar.cloud
 DOMAIN-SUFFIX,sentry.eks.hoyoverse.com
@@ -251216,6 +251218,7 @@ IP-CIDR6,2402:4e00:1900:1700:0:9554:1ad9:c3a/128,no-resolve
 IP-CIDR6,2402:db40:5100:1011::5/128,no-resolve
 IP-CIDR6,240e:928:1400:10::25/128,no-resolve
 AND,((USER-AGENT,Frodo*),(DOMAIN,119.29.29.29))
+DOMAIN-REGEX,^speed\.(coe|open)\.ad\.[a-z]{2,6}\.prod\.hosts\.ooklaserver\.net$
 URL-REGEX,/\d+/resolve
 URL-REGEX,/\d+/sign_d
 URL-REGEX,^https?:\/\/.+?\.beacon\.qq\.com

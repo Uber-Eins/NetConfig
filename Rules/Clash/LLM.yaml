@@ -23,6 +23,7 @@ payload:
   - 'DOMAIN-SUFFIX,client-api.arkoselabs.com'
   - 'DOMAIN-SUFFIX,deepmind.com'
   - 'DOMAIN-SUFFIX,deepmind.google'
+  - 'DOMAIN-SUFFIX,featuregates.org'
   - 'DOMAIN-SUFFIX,gemini.google.com'
   - 'DOMAIN-SUFFIX,generativeai.google'
   - 'DOMAIN-SUFFIX,host.livekit.cloud'
