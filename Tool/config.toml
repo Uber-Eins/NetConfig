@@ -37,6 +37,7 @@ urls = [
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Claude/Claude.list",
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Gemini/Gemini.list",
     "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Anthropic/Anthropic.list",
+    "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/Anthropic.list",
     "https://raw.githubusercontent.com/Uber-Eins/NetConfig/main/Rules/Merge/AppleAI.list",
 ]
 
