@@ -22,13 +22,6 @@ enum RuleType {
 struct Rule {
     rule_type: RuleType,
     original_line: String,
-    category: String, // 分类名称（从目录结构提取）
-}
-
-#[derive(Debug)]
-struct RuleFile {
-    path: PathBuf,
-    category: String,
 }
 
 /// 域名后缀Trie树节点
@@ -98,88 +91,71 @@ impl SuffixTrie {
     }
 }
 
-/// IPv4 CIDR 管理器
-struct Ipv4CidrManager {
-    // 按前缀长度分组，从大（更宽泛）到小（更具体）
-    cidrs: Vec<Ipv4Net>,
-}
+fn deduplicate_ipv4_rules(rules: HashMap<Ipv4Net, Rule>) -> Vec<Rule> {
+    let mut rules = rules.into_iter().collect::<Vec<_>>();
+    rules.sort_unstable_by(|(left, _), (right, _)| {
+        u32::from(left.network())
+            .cmp(&u32::from(right.network()))
+            .then_with(|| u32::from(right.broadcast()).cmp(&u32::from(left.broadcast())))
+    });
 
-impl Ipv4CidrManager {
-    fn new() -> Self {
-        Ipv4CidrManager { cidrs: Vec::new() }
-    }
+    let mut covered_until = None;
+    let mut result = Vec::with_capacity(rules.len());
 
-    fn add(&mut self, net: Ipv4Net) {
-        self.cidrs.push(net);
-    }
-
-    /// 构建并返回非冗余的CIDR列表
-    fn get_non_redundant(&mut self) -> HashSet<Ipv4Net> {
-        // 按前缀长度排序（从小到大，即从最宽泛到最具体）
-        self.cidrs.sort_by_key(|n| n.prefix_len());
-
-        let mut result: Vec<Ipv4Net> = Vec::new();
-
-        for net in &self.cidrs {
-            // 检查是否被已有的更宽泛的网段覆盖
-            let is_covered = result.iter().any(|existing| existing.contains(net));
-            if !is_covered {
-                result.push(*net);
-            }
+    for (network, rule) in rules {
+        let end = u32::from(network.broadcast());
+        if covered_until.is_some_and(|covered_end| end <= covered_end) {
+            continue;
         }
 
-        result.into_iter().collect()
+        covered_until = Some(end);
+        result.push(rule);
     }
+
+    result
 }
 
-/// IPv6 CIDR 管理器
-struct Ipv6CidrManager {
-    cidrs: Vec<Ipv6Net>,
-}
+fn deduplicate_ipv6_rules(rules: HashMap<Ipv6Net, Rule>) -> Vec<Rule> {
+    let mut rules = rules.into_iter().collect::<Vec<_>>();
+    rules.sort_unstable_by(|(left, _), (right, _)| {
+        u128::from(left.network())
+            .cmp(&u128::from(right.network()))
+            .then_with(|| u128::from(right.broadcast()).cmp(&u128::from(left.broadcast())))
+    });
 
-impl Ipv6CidrManager {
-    fn new() -> Self {
-        Ipv6CidrManager { cidrs: Vec::new() }
-    }
+    let mut covered_until = None;
+    let mut result = Vec::with_capacity(rules.len());
 
-    fn add(&mut self, net: Ipv6Net) {
-        self.cidrs.push(net);
-    }
-
-    fn get_non_redundant(&mut self) -> HashSet<Ipv6Net> {
-        self.cidrs.sort_by_key(|n| n.prefix_len());
-
-        let mut result: Vec<Ipv6Net> = Vec::new();
-
-        for net in &self.cidrs {
-            let is_covered = result.iter().any(|existing| existing.contains(net));
-            if !is_covered {
-                result.push(*net);
-            }
+    for (network, rule) in rules {
+        let end = u128::from(network.broadcast());
+        if covered_until.is_some_and(|covered_end| end <= covered_end) {
+            continue;
         }
 
-        result.into_iter().collect()
+        covered_until = Some(end);
+        result.push(rule);
     }
+
+    result
 }
 
 /// 解析单行规则
-fn parse_rule(line: &str, category: &str) -> Option<Rule> {
+fn parse_rule(line: &str) -> Option<Rule> {
     let line = line.trim();
     if line.is_empty() || line.starts_with('#') {
         return None;
     }
 
-    parse_ruleset_line(line, category)
+    parse_ruleset_line(line)
 }
 
-fn parse_ruleset_line(line: &str, category: &str) -> Option<Rule> {
+fn parse_ruleset_line(line: &str) -> Option<Rule> {
     let mut parts = line.splitn(3, ',');
     let rule_type_raw = parts.next()?;
     let Some(value) = parts.next() else {
         return Some(Rule {
             rule_type: RuleType::Other,
             original_line: line.to_string(),
-            category: category.to_string(),
         });
     };
 
@@ -210,12 +186,11 @@ fn parse_ruleset_line(line: &str, category: &str) -> Option<Rule> {
     Some(Rule {
         rule_type,
         original_line: line.to_string(),
-        category: category.to_string(),
     })
 }
 
 /// 读取单个文件的所有规则
-fn read_rules_from_file(file_path: &Path, category: &str) -> Result<Vec<Rule>, String> {
+fn read_rules_from_file(file_path: &Path) -> Result<Vec<Rule>, String> {
     let file = File::open(file_path)
         .map_err(|error| format!("无法打开规则文件 {:?}: {}", file_path, error))?;
 
@@ -231,7 +206,7 @@ fn read_rules_from_file(file_path: &Path, category: &str) -> Result<Vec<Rule>, S
                 error
             )
         })?;
-        if let Some(rule) = parse_rule(&line, category) {
+        if let Some(rule) = parse_rule(&line) {
             rules.push(rule);
         }
     }
@@ -240,8 +215,8 @@ fn read_rules_from_file(file_path: &Path, category: &str) -> Result<Vec<Rule>, S
 }
 
 /// 扫描目录获取所有规则文件
-fn scan_rule_files(base_path: &Path) -> Result<Vec<RuleFile>, String> {
-    let mut files = Vec::new();
+fn scan_rule_files(base_path: &Path) -> Result<BTreeMap<String, Vec<PathBuf>>, String> {
+    let mut files_by_category = BTreeMap::<String, Vec<PathBuf>>::new();
 
     for entry in WalkDir::new(base_path) {
         let entry = entry.map_err(|error| format!("扫描规则目录失败: {}", error))?;
@@ -261,27 +236,10 @@ fn scan_rule_files(base_path: &Path) -> Result<Vec<RuleFile>, String> {
             .as_os_str()
             .to_string_lossy()
             .to_string();
-        files.push(RuleFile { path, category });
+        files_by_category.entry(category).or_default().push(path);
     }
 
-    Ok(files)
-}
-
-/// 按分类隔离后执行去重，避免一个分类中的宽泛规则删除另一个分类的规则。
-fn deduplicate_rules(rules: Vec<Rule>) -> Vec<Rule> {
-    let mut rules_by_category: BTreeMap<String, Vec<Rule>> = BTreeMap::new();
-
-    for rule in rules {
-        rules_by_category
-            .entry(rule.category.clone())
-            .or_default()
-            .push(rule);
-    }
-
-    rules_by_category
-        .into_values()
-        .flat_map(deduplicate_category_rules)
-        .collect()
+    Ok(files_by_category)
 }
 
 /// 单个分类内的去重逻辑
@@ -293,9 +251,7 @@ fn deduplicate_category_rules(rules: Vec<Rule>) -> Vec<Rule> {
     let mut domain_suffixes: Vec<(String, Rule)> = Vec::new();
     let mut domain_keywords: HashSet<String> = HashSet::new();
     let mut domain_keyword_rules: Vec<Rule> = Vec::new();
-    let mut ipv4_manager = Ipv4CidrManager::new();
     let mut ipv4_rules: HashMap<Ipv4Net, Rule> = HashMap::new();
-    let mut ipv6_manager = Ipv6CidrManager::new();
     let mut ipv6_rules: HashMap<Ipv6Net, Rule> = HashMap::new();
     let mut other_rules: Vec<Rule> = Vec::new();
 
@@ -312,11 +268,9 @@ fn deduplicate_category_rules(rules: Vec<Rule>) -> Vec<Rule> {
                 domain_keyword_rules.push(rule);
             }
             RuleType::IpCidr(net) => {
-                ipv4_manager.add(*net);
                 ipv4_rules.insert(*net, rule);
             }
             RuleType::IpCidr6(net) => {
-                ipv6_manager.add(*net);
                 ipv6_rules.insert(*net, rule);
             }
             RuleType::Other => {
@@ -393,20 +347,10 @@ fn deduplicate_category_rules(rules: Vec<Rule>) -> Vec<Rule> {
     }
 
     // 第五步：处理IP-CIDR
-    let non_redundant_ipv4 = ipv4_manager.get_non_redundant();
-    for net in non_redundant_ipv4 {
-        if let Some(rule) = ipv4_rules.remove(&net) {
-            result.push(rule);
-        }
-    }
+    result.extend(deduplicate_ipv4_rules(ipv4_rules));
 
     // 第六步：处理IP-CIDR6
-    let non_redundant_ipv6 = ipv6_manager.get_non_redundant();
-    for net in non_redundant_ipv6 {
-        if let Some(rule) = ipv6_rules.remove(&net) {
-            result.push(rule);
-        }
-    }
+    result.extend(deduplicate_ipv6_rules(ipv6_rules));
 
     // 第七步：添加其他规则
     result.extend(other_rules);
@@ -426,45 +370,35 @@ fn rule_order(rule: &Rule) -> u8 {
     }
 }
 
-/// 按分类合并并写入文件
-fn write_rules_by_category(rules: Vec<Rule>, base_path: &Path) -> Result<(), String> {
-    // 按分类分组
-    let mut category_rules: BTreeMap<String, Vec<Rule>> = BTreeMap::new();
+/// 写入单个分类的合并规则。
+fn write_category_rules(
+    category: &str,
+    mut rules: Vec<Rule>,
+    base_path: &Path,
+) -> Result<(), String> {
+    rules.sort_unstable_by(|left, right| {
+        rule_order(left)
+            .cmp(&rule_order(right))
+            .then_with(|| left.original_line.cmp(&right.original_line))
+    });
 
-    for rule in rules {
-        category_rules
-            .entry(rule.category.clone())
-            .or_default()
-            .push(rule);
-    }
+    let output_path = base_path.join(format!("{}.list", category));
+    let line_count = rules.len();
 
-    // 写入每个分类的文件
-    for (category, mut rules) in category_rules {
-        // 按规则类型排序
-        rules.sort_unstable_by(|left, right| {
-            rule_order(left)
-                .cmp(&rule_order(right))
-                .then_with(|| left.original_line.cmp(&right.original_line))
-        });
-
-        let output_path = base_path.join(format!("{}.list", category));
-        let line_count = rules.len();
-
-        match File::create(&output_path) {
-            Ok(file) => {
-                let mut writer = BufWriter::new(file);
-                for rule in rules {
-                    writeln!(writer, "{}", rule.original_line)
-                        .map_err(|e| format!("写入文件失败 {:?}: {}", output_path, e))?;
-                }
-                writer
-                    .flush()
-                    .map_err(|e| format!("刷新文件失败 {:?}: {}", output_path, e))?;
-                println!("已写入: {} ({} 条规则)", output_path.display(), line_count);
+    match File::create(&output_path) {
+        Ok(file) => {
+            let mut writer = BufWriter::new(file);
+            for rule in rules {
+                writeln!(writer, "{}", rule.original_line)
+                    .map_err(|e| format!("写入文件失败 {:?}: {}", output_path, e))?;
             }
-            Err(e) => {
-                return Err(format!("无法写入文件 {:?}: {}", output_path, e));
-            }
+            writer
+                .flush()
+                .map_err(|e| format!("刷新文件失败 {:?}: {}", output_path, e))?;
+            println!("已写入: {} ({} 条规则)", output_path.display(), line_count);
+        }
+        Err(e) => {
+            return Err(format!("无法写入文件 {:?}: {}", output_path, e));
         }
     }
 
@@ -487,27 +421,34 @@ pub fn run(base_path: &Path) -> Result<(), String> {
     println!("扫描规则文件: {}", base_path.display());
 
     // 扫描所有规则文件
-    let files = scan_rule_files(base_path)?;
-    println!("找到 {} 个规则文件", files.len());
+    let files_by_category = scan_rule_files(base_path)?;
+    let file_count = files_by_category.values().map(Vec::len).sum::<usize>();
+    println!("找到 {} 个规则文件", file_count);
 
-    // 并行读取所有规则
-    println!("读取规则中...");
-    let rule_batches: Result<Vec<Vec<Rule>>, String> = files
-        .par_iter()
-        .map(|file| read_rules_from_file(&file.path, &file.category))
-        .collect();
-    let all_rules = rule_batches?.into_iter().flatten().collect::<Vec<_>>();
+    let mut total_rules = 0usize;
+    let mut after_dedup = 0usize;
 
-    let total_rules = all_rules.len();
-    println!("共读取 {} 条规则", total_rules);
+    println!("按分类读取和去重中...");
+    for (category, files) in files_by_category {
+        let rule_batches: Result<Vec<Vec<Rule>>, String> = files
+            .par_iter()
+            .map(|file_path| read_rules_from_file(file_path))
+            .collect();
+        let rule_batches = rule_batches?;
+        let category_rule_count = rule_batches.iter().map(Vec::len).sum::<usize>();
+        let mut rules = Vec::with_capacity(category_rule_count);
+        for batch in rule_batches {
+            rules.extend(batch);
+        }
 
-    // 去重
-    println!("去重处理中...");
-    let deduped_rules = deduplicate_rules(all_rules);
-    let after_dedup = deduped_rules.len();
+        total_rules += category_rule_count;
+        let deduped_rules = deduplicate_category_rules(rules);
+        after_dedup += deduped_rules.len();
+        write_category_rules(&category, deduped_rules, base_path)?;
+    }
 
     println!("\n========== 统计信息 ==========");
-    println!("处理文件数: {}", files.len());
+    println!("处理文件数: {}", file_count);
     println!("原始规则数: {}", total_rules);
     println!("去重后规则数: {}", after_dedup);
     println!("移除重复项: {}", total_rules - after_dedup);
@@ -518,9 +459,6 @@ pub fn run(base_path: &Path) -> Result<(), String> {
         );
     }
     println!("================================\n");
-
-    // 按分类写入合并后的文件
-    write_rules_by_category(deduped_rules, base_path)?;
 
     println!("去重完成!");
     Ok(())
@@ -551,15 +489,52 @@ mod tests {
     }
 
     #[test]
-    fn test_ipv4_cidr_dedup() {
-        let mut manager = Ipv4CidrManager::new();
-        manager.add("10.0.0.0/8".parse().unwrap());
-        manager.add("10.0.0.0/24".parse().unwrap());
-        manager.add("10.0.1.0/24".parse().unwrap());
+    fn test_cidr_dedup() {
+        let rules = vec![
+            parse_rule("IP-CIDR,10.0.0.0/8").unwrap(),
+            parse_rule("IP-CIDR,10.0.0.0/24").unwrap(),
+            parse_rule("IP-CIDR,10.0.1.0/24").unwrap(),
+            parse_rule("IP-CIDR,192.168.0.0/16").unwrap(),
+            parse_rule("IP-CIDR6,2001:db8::/32").unwrap(),
+            parse_rule("IP-CIDR6,2001:db8:1::/48").unwrap(),
+            parse_rule("IP-CIDR6,2001:db9::/32").unwrap(),
+        ];
 
-        let result = manager.get_non_redundant();
-        assert_eq!(result.len(), 1);
-        assert!(result.contains(&"10.0.0.0/8".parse().unwrap()));
+        let result = deduplicate_category_rules(rules);
+        assert_eq!(
+            result
+                .iter()
+                .filter(|rule| matches!(rule.rule_type, RuleType::IpCidr(_)))
+                .count(),
+            2
+        );
+        assert_eq!(
+            result
+                .iter()
+                .filter(|rule| matches!(rule.rule_type, RuleType::IpCidr6(_)))
+                .count(),
+            2
+        );
+        assert!(
+            result
+                .iter()
+                .any(|rule| rule.original_line == "IP-CIDR,10.0.0.0/8")
+        );
+        assert!(
+            result
+                .iter()
+                .any(|rule| rule.original_line == "IP-CIDR6,2001:db8::/32")
+        );
+        assert!(
+            result
+                .iter()
+                .any(|rule| rule.original_line == "IP-CIDR,192.168.0.0/16")
+        );
+        assert!(
+            result
+                .iter()
+                .any(|rule| rule.original_line == "IP-CIDR6,2001:db9::/32")
+        );
     }
 
     #[test]
@@ -572,27 +547,27 @@ mod tests {
 
     #[test]
     fn test_parse_rule() {
-        let rule = parse_rule("DOMAIN,example.com", "test.txt").unwrap();
+        let rule = parse_rule("DOMAIN,example.com").unwrap();
         assert!(matches!(rule.rule_type, RuleType::Domain(_)));
 
-        let rule = parse_rule("DOMAIN-SUFFIX,example.com", "test.txt").unwrap();
+        let rule = parse_rule("DOMAIN-SUFFIX,example.com").unwrap();
         assert!(matches!(rule.rule_type, RuleType::DomainSuffix(_)));
 
-        let rule = parse_rule("IP-CIDR,10.0.0.0/8", "test.txt").unwrap();
+        let rule = parse_rule("IP-CIDR,10.0.0.0/8").unwrap();
         assert!(matches!(rule.rule_type, RuleType::IpCidr(_)));
     }
 
     #[test]
-    fn test_deduplicate_rules_basic_coverage() {
+    fn test_deduplicate_category_rules_basic_coverage() {
         let rules = vec![
-            parse_rule("DOMAIN-KEYWORD,test", "cat").unwrap(),
-            parse_rule("DOMAIN-SUFFIX,test.com", "cat").unwrap(),
-            parse_rule("DOMAIN,a.test.com", "cat").unwrap(),
-            parse_rule("IP-CIDR,10.0.0.0/8", "cat").unwrap(),
-            parse_rule("IP-CIDR,10.0.0.0/24", "cat").unwrap(),
+            parse_rule("DOMAIN-KEYWORD,test").unwrap(),
+            parse_rule("DOMAIN-SUFFIX,test.com").unwrap(),
+            parse_rule("DOMAIN,a.test.com").unwrap(),
+            parse_rule("IP-CIDR,10.0.0.0/8").unwrap(),
+            parse_rule("IP-CIDR,10.0.0.0/24").unwrap(),
         ];
 
-        let deduped = deduplicate_rules(rules);
+        let deduped = deduplicate_category_rules(rules);
 
         assert!(
             deduped
@@ -618,8 +593,39 @@ mod tests {
     }
 
     #[test]
+    fn test_run_processes_categories_independently() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!("seshat-dedup-{nonce}"));
+        let first_category = base_path.join("First");
+        let second_category = base_path.join("Second");
+        std::fs::create_dir_all(&first_category).unwrap();
+        std::fs::create_dir_all(&second_category).unwrap();
+        std::fs::write(
+            first_category.join("rules.list"),
+            "DOMAIN-SUFFIX,example.com\nDOMAIN,a.example.com\n",
+        )
+        .unwrap();
+        std::fs::write(second_category.join("rules.list"), "DOMAIN,a.example.com\n").unwrap();
+
+        run(&base_path).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(base_path.join("First.list")).unwrap(),
+            "DOMAIN-SUFFIX,example.com\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(base_path.join("Second.list")).unwrap(),
+            "DOMAIN,a.example.com\n"
+        );
+        std::fs::remove_dir_all(base_path).unwrap();
+    }
+
+    #[test]
     fn test_parse_rule_skips_comments_and_blank_lines() {
-        assert!(parse_rule("# comment", "cat").is_none());
-        assert!(parse_rule("   ", "cat").is_none());
+        assert!(parse_rule("# comment").is_none());
+        assert!(parse_rule("   ").is_none());
     }
 }
