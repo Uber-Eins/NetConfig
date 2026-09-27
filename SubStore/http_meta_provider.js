@@ -1,68 +1,82 @@
 /**
- * Sub-Store Node.js: fetch node metadata, independently of availability.
- * api: https://my.ippure.com/v1/info; method: get; node_info: keep metadata.
- * Missing/failed metadata never marks or removes a node as failed.
- * See README.md for shared HTTP META arguments and the four-script pipeline.
+ * Sub-Store Node.js: request the egress IP, then resolve the AS organization via MMDB.
+ * api: https://api.ip.sb/ip (plain IP or JSON with an ip field); method: get.
+ * mmdb_country/mmdb_asn: local MMDB paths; node_info: keep _provider.
+ * Never uses proxy.server as the egress IP or marks/removes a node as failed.
+ * See README.md for shared HTTP META arguments.
  */
 async function operator(proxies = [], targetPlatform, context) {
-    const api = $arguments.api || 'https://my.ippure.com/v1/info'
+    const api = $arguments.api || 'https://api.ip.sb/ip'
     const method = String($arguments.method || 'get').toLowerCase()
+    const country = $arguments.mmdb_country || '/opt/app/data/GeoLite2-Country.mmdb'
+    const asn = $arguments.mmdb_asn || '/opt/app/data/GeoLite2-ASN.mmdb'
     const keepInfo = toBoolean($arguments.node_info)
+    let mmdb
     proxies.forEach(proxy => {
-        delete proxy._node_info
-        delete proxy._ippure
+        proxy._originalName = proxy._originalName || proxy.name
+        proxy._originalServer = proxy._originalServer || proxy.server
+        delete proxy._provider
     })
-
-    await runChecks(proxies, ['node-info', api, method], async port => {
+    await runChecks(proxies, ['provider', api, method, country, asn], async port => {
         const res = await http({
-            url: api,
-            method,
+            url: api, method,
             proxy: `http://${$arguments.http_meta_host ?? '127.0.0.1'}:${port}`,
             headers: { 'User-Agent': 'Sub-Store-Node-Info' },
         })
-        const info = typeof res.body === 'string' ? JSON.parse(res.body) : res.body
-        if (!info || typeof info !== 'object' || Array.isArray(info) ||
-            !(hasFraudScore(info) || typeof info.isResidential === 'boolean' ||
-                typeof info.isBroadcast === 'boolean' || require('net').isIP(String(info.ip || '')))) {
-            throw new Error('API 未返回有效节点信息')
+        let body = res.body
+        if (typeof body === 'string') {
+            try { body = JSON.parse(body) } catch (_) { /* Plain-IP APIs are supported. */ }
         }
-        return info
+        const ip = String(typeof body === 'object' && body ? body.ip ?? '' : body ?? '').trim()
+        if (!require('net').isIP(ip)) throw new Error('API 未返回有效出口 IP')
+        if (!mmdb) mmdb = new ProxyUtils.MMDB({ country, asn })
+        return { ip, aso: mmdb.ipaso(ip) || '', asn: mmdb.ipasn(ip) || '', countryCode: mmdb.geoip(ip) || '' }
     }, (proxy, result) => {
-        const { tags, name } = splitName(proxy.name)
-        const remaining = tags.filter(tag => !/^(?:\d+(?:\.\d+)?|IPv6|-|🏠|🏢|🌱|📡)$/.test(tag))
-        const labels = result.ok ? infoLabels(result.data) : []
-        const allTags = [...labels, ...remaining]
-        proxy.name = `${allTags.length ? `[${allTags.join('|')}] ` : ''}${name}`
-        if (keepInfo && result.ok) {
-            proxy._node_info = result.data
-            proxy._ippure = result.data
-        }
+        if (!result.ok) return
+        const info = result.data
+        if (keepInfo) proxy._provider = info
+        const organization = getOrganization(info)
+        if (!organization) return
+        const match = String(proxy.name).match(/^\[([^\]]*)\]\s*/)
+        const tags = match ? match[1].split('|').filter(tag => tag && !/^x\d+(?:\.\d+)?$/.test(tag)) : []
+        const multiplier = findMultiplier(proxy._originalName)
+        if (multiplier) tags.push(`x${multiplier}`)
+        const flag = getFlag(info.countryCode)
+        proxy.name = `${tags.length ? `[${tags.join('|')}] ` : ''}${[flag, organization].filter(Boolean).join(' ')}`
     })
     return finish(proxies)
 }
 
-function hasFraudScore(info) {
-    return (typeof info.fraudScore === 'number' || typeof info.fraudScore === 'string') &&
-        String(info.fraudScore).trim() !== '' && Number.isFinite(Number(info.fraudScore))
+function getOrganization(info) {
+    const aso = String(info.aso || '').trim()
+    if (aso && !/^(?:private customer|customer|unknown|anonymous|not available|n\/a)(?:\b|$)/i.test(aso)) return aso
+    return info.asn ? `AS${String(info.asn).replace(/^AS/i, '')}` : ''
 }
 
-function infoLabels(info) {
-    const labels = []
-    if (hasFraudScore(info)) labels.push(String(info.fraudScore))
-    else if (require('net').isIP(String(info.ip || '')) === 6) labels.push('IPv6')
-    if (info.isResidential === true) labels.push('🏠')
-    else if (info.isResidential === false) labels.push('🏢')
-    if (info.isBroadcast === true) labels.push('🌱')
-    else if (info.isBroadcast === false) labels.push('📡')
-    return labels
-}
-
-function splitName(value = '') {
-    const match = String(value).match(/^\[([^\]]*)\]\s*/)
-    return {
-        tags: match ? match[1].split('|').filter(Boolean) : [],
-        name: match ? String(value).slice(match[0].length) : String(value),
+function findMultiplier(name = '') {
+    const text = String(name)
+        .replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+        .replace(/[．。]/g, '.')
+        .replace(/[ｘＸ×✕]/g, 'x')
+    const boundary = String.raw`(?:^|[\s_\-+~|/\\()[\]{}:：,，#])`
+    const end = String.raw`(?=$|[\s_\-+~|/\\()[\]{}:：,，#倍])`
+    for (const pattern of [
+        new RegExp(`${boundary}[xX]\\s*([0-9]+(?:\\.[0-9]+)?)${end}`, 'g'),
+        new RegExp(`${boundary}([0-9]+(?:\\.[0-9]+)?)\\s*[xX]${end}`, 'g'),
+        new RegExp(`${boundary}([0-9]+(?:\\.[0-9]+)?)\\s*倍${end}`, 'g'),
+    ]) {
+        for (const match of text.matchAll(pattern)) {
+            const value = Number(match[1])
+            if (Number.isFinite(value) && value > 0 && Math.abs(value - 1) >= 1e-9) return String(value)
+        }
     }
+    return ''
+}
+
+function getFlag(value) {
+    const code = String(value || '').trim().toUpperCase()
+    if (!/^[A-Z]{2}$/.test(code)) return ''
+    return code.replace(/[A-Z]/g, char => String.fromCodePoint(char.charCodeAt(0) + 127397)).replace(/🇹🇼/g, '🇼🇸')
 }
 
 // Kept inline so this file can be used as a standalone Sub-Store script.

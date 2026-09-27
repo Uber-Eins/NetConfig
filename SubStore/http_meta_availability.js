@@ -1,68 +1,38 @@
 /**
- * Sub-Store Node.js: fetch node metadata, independently of availability.
- * api: https://my.ippure.com/v1/info; method: get; node_info: keep metadata.
- * Missing/failed metadata never marks or removes a node as failed.
- * See README.md for shared HTTP META arguments and the four-script pipeline.
+ * Sub-Store Node.js: URL availability check (the only node-failure gate).
+ * url: https://www.gstatic.com/generate_204; method: get; HTTP 200–399 succeeds.
+ * remove_failed: remove failed nodes; node_info: keep _check_failed/_latency.
+ * remove_incompatible: independently remove nodes unsupported by ClashMeta.
+ * See README.md for shared HTTP META arguments.
  */
 async function operator(proxies = [], targetPlatform, context) {
-    const api = $arguments.api || 'https://my.ippure.com/v1/info'
+    const url = $arguments.url || 'https://www.gstatic.com/generate_204'
     const method = String($arguments.method || 'get').toLowerCase()
-    const keepInfo = toBoolean($arguments.node_info)
     proxies.forEach(proxy => {
-        delete proxy._node_info
-        delete proxy._ippure
+        delete proxy._check_failed
+        delete proxy._latency
     })
-
-    await runChecks(proxies, ['node-info', api, method], async port => {
-        const res = await http({
-            url: api,
-            method,
+    await runChecks(proxies, ['availability', url, method], async port => {
+        const startedAt = Date.now()
+        await http({
+            url, method,
             proxy: `http://${$arguments.http_meta_host ?? '127.0.0.1'}:${port}`,
-            headers: { 'User-Agent': 'Sub-Store-Node-Info' },
         })
-        const info = typeof res.body === 'string' ? JSON.parse(res.body) : res.body
-        if (!info || typeof info !== 'object' || Array.isArray(info) ||
-            !(hasFraudScore(info) || typeof info.isResidential === 'boolean' ||
-                typeof info.isBroadcast === 'boolean' || require('net').isIP(String(info.ip || '')))) {
-            throw new Error('API 未返回有效节点信息')
-        }
-        return info
+        return { latency: Date.now() - startedAt }
     }, (proxy, result) => {
-        const { tags, name } = splitName(proxy.name)
-        const remaining = tags.filter(tag => !/^(?:\d+(?:\.\d+)?|IPv6|-|🏠|🏢|🌱|📡)$/.test(tag))
-        const labels = result.ok ? infoLabels(result.data) : []
-        const allTags = [...labels, ...remaining]
-        proxy.name = `${allTags.length ? `[${allTags.join('|')}] ` : ''}${name}`
-        if (keepInfo && result.ok) {
-            proxy._node_info = result.data
-            proxy._ippure = result.data
-        }
+        proxy._check_failed = !result.ok
+        if (result.ok) proxy._latency = result.data.latency
     })
-    return finish(proxies)
-}
-
-function hasFraudScore(info) {
-    return (typeof info.fraudScore === 'number' || typeof info.fraudScore === 'string') &&
-        String(info.fraudScore).trim() !== '' && Number.isFinite(Number(info.fraudScore))
-}
-
-function infoLabels(info) {
-    const labels = []
-    if (hasFraudScore(info)) labels.push(String(info.fraudScore))
-    else if (require('net').isIP(String(info.ip || '')) === 6) labels.push('IPv6')
-    if (info.isResidential === true) labels.push('🏠')
-    else if (info.isResidential === false) labels.push('🏢')
-    if (info.isBroadcast === true) labels.push('🌱')
-    else if (info.isBroadcast === false) labels.push('📡')
-    return labels
-}
-
-function splitName(value = '') {
-    const match = String(value).match(/^\[([^\]]*)\]\s*/)
-    return {
-        tags: match ? match[1].split('|').filter(Boolean) : [],
-        name: match ? String(value).slice(match[0].length) : String(value),
+    const result = proxies.filter(proxy =>
+        !(toBoolean($arguments.remove_failed) && proxy._check_failed === true) &&
+        !(toBoolean($arguments.remove_incompatible) && proxy._incompatible))
+    if (!toBoolean($arguments.node_info)) {
+        result.forEach(proxy => {
+            delete proxy._check_failed
+            delete proxy._latency
+        })
     }
+    return finish(result)
 }
 
 // Kept inline so this file can be used as a standalone Sub-Store script.
