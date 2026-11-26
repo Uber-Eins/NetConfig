@@ -207,6 +207,7 @@ payload:
   - 'DOMAIN-SUFFIX,gemini.google'
   - 'DOMAIN-SUFFIX,gemini.google.com'
   - 'DOMAIN-SUFFIX,gemini.gstatic.com'
+  - 'DOMAIN-SUFFIX,gemma.ai'
   - 'DOMAIN-SUFFIX,generativeai.google'
   - 'DOMAIN-SUFFIX,genspark.ai'
   - 'DOMAIN-SUFFIX,githubcopilot.com'
